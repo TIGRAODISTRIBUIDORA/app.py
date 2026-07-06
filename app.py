@@ -415,7 +415,7 @@ def new_order(db):
    clientes_filtrados=clients[:1]
    st.warning('Nenhum cliente encontrado. Cadastre o cliente ou ajuste a pesquisa.')
 
-  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:f"{codigo_cliente(x)} — {x['name']} — {x['document']}", key='pedido_cliente')
+  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:x['name'], key='pedido_cliente')
 
   if st.session_state.role=='admin':
    s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
