@@ -57,7 +57,145 @@ def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 def css():
  st.markdown('''<style>
- header, footer, [data-testid="stSidebar"] {display:none!important}.block-container{max-width:520px!important;padding:14px 14px 98px!important}.stApp{background:#fafafa;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#111;color:#fff;border-radius:0 0 28px 28px;padding:22px;margin:-14px -14px 16px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:12px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:24px;padding:16px}.metric b{font-size:24px}.pill{border-radius:999px;padding:6px 10px;background:#fff7ed;color:#ea580c;font-weight:900;font-size:11px}.nav{position:fixed;bottom:0;left:0;right:0;background:#111;z-index:999;padding:8px 5px 12px;display:flex;justify-content:center;gap:4px}.nav button{min-width:64px;border:0;background:#111;color:#eee;border-radius:18px;padding:8px 6px;font-size:11px;font-weight:800}.nav .on{background:#f97316;color:#111}.status{font-weight:900;border-radius:999px;padding:4px 8px;font-size:11px}.stButton>button{border-radius:16px!important;font-weight:900!important;min-height:44px}.stTextInput input,.stNumberInput input,.stSelectbox div{border-radius:14px!important}</style>''', unsafe_allow_html=True)
+ header, footer, [data-testid="stSidebar"] {display:none!important}
+
+ .block-container{
+   max-width:520px!important;
+   padding:14px 14px 86px!important;
+ }
+
+ .stApp{
+   background:#fafafa;
+   color:#171717;
+ }
+
+ *{
+   font-family:Inter,Arial,sans-serif;
+ }
+
+ .top{
+   background:#111;
+   color:#fff;
+   border-radius:0 0 28px 28px;
+   padding:22px;
+   margin:-14px -14px 14px;
+ }
+
+ .brand{
+   display:flex;
+   gap:12px;
+   align-items:center;
+ }
+
+ .logo{
+   width:48px;
+   height:48px;
+   background:#f97316;
+   border-radius:18px;
+   display:flex;
+   align-items:center;
+   justify-content:center;
+   font-size:28px;
+ }
+
+ .title{
+   font-size:26px;
+   font-weight:900;
+ }
+
+ .sub{
+   color:#fb923c;
+   font-size:11px;
+   font-weight:900;
+   letter-spacing:2px;
+ }
+
+ .card{
+   background:white;
+   border:1px solid #eee;
+   border-radius:24px;
+   padding:16px;
+   margin:10px 0;
+   box-shadow:0 8px 24px rgba(0,0,0,.05);
+ }
+
+ .metric{
+   background:#111;
+   color:#fff;
+   border-radius:22px;
+   padding:12px 16px;
+   min-height:86px;
+ }
+
+ .metric b{
+   font-size:22px;
+   line-height:1.1;
+ }
+
+ .pill{
+   border-radius:999px;
+   padding:6px 10px;
+   background:#fff7ed;
+   color:#ea580c;
+   font-weight:900;
+   font-size:11px;
+ }
+
+ .status{
+   font-weight:900;
+   border-radius:999px;
+   padding:4px 8px;
+   font-size:11px;
+ }
+
+ .stButton>button{
+   border-radius:16px!important;
+   font-weight:900!important;
+   min-height:44px;
+ }
+
+ .stTextInput input,
+ .stNumberInput input,
+ .stSelectbox div{
+   border-radius:14px!important;
+ }
+
+ h2, h3{
+   margin-top:12px!important;
+ }
+
+ @media (max-width:640px){
+   .block-container{
+     max-width:100%!important;
+     padding:12px 14px 86px!important;
+   }
+
+   .top{
+     padding:20px;
+     margin:-12px -14px 12px;
+   }
+
+   .metric{
+     padding:10px 16px!important;
+     min-height:78px!important;
+     border-radius:20px!important;
+     margin-bottom:8px!important;
+   }
+
+   .metric b{
+     font-size:20px!important;
+   }
+
+   h2, h3{
+     margin-top:8px!important;
+     margin-bottom:8px!important;
+   }
+
+   [data-testid="stVerticalBlock"]{
+     gap:.35rem!important;
+   }
+ }
+ </style>''', unsafe_allow_html=True)
 
 def header(db):
  user=st.session_state.get('user_name','')
@@ -68,68 +206,97 @@ def nav():
 
  st.markdown('''
  <style>
- .st-key-bottom_nav {
-   position: fixed !important;
-   left: 0 !important;
-   right: 0 !important;
-   bottom: 0 !important;
-   z-index: 999999 !important;
-   background: #111 !important;
-   padding: 8px 5px 12px 5px !important;
-   border-top: 1px solid #222 !important;
+ .st-key-bottom_nav{
+   position:fixed!important;
+   left:0!important;
+   right:0!important;
+   bottom:0!important;
+   z-index:999999!important;
+   background:#111!important;
+   height:72px!important;
+   padding:5px 3px calc(5px + env(safe-area-inset-bottom)) 3px!important;
+   border-top:1px solid #222!important;
+   overflow:hidden!important;
  }
- .st-key-bottom_nav [data-testid="stHorizontalBlock"] {
-   max-width: 520px !important;
-   margin: auto !important;
-   gap: 4px !important;
-   display: flex !important;
-   flex-direction: row !important;
-   flex-wrap: nowrap !important;
-   align-items: center !important;
+
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+   width:100%!important;
+   max-width:520px!important;
+   height:62px!important;
+   margin:0 auto!important;
+   display:grid!important;
+   grid-template-columns:repeat(6, 1fr)!important;
+   gap:2px!important;
+   align-items:center!important;
  }
- .st-key-bottom_nav [data-testid="column"] {
-   width: 16.66% !important;
-   min-width: 0 !important;
-   flex: 1 1 0 !important;
-   padding: 0 !important;
+
+ .st-key-bottom_nav [data-testid="column"]{
+   width:100%!important;
+   min-width:0!important;
+   max-width:none!important;
+   padding:0!important;
+   flex:none!important;
  }
- .st-key-bottom_nav [data-testid="column"] > div { width: 100% !important; }
- .st-key-bottom_nav .stButton {width: 100% !important;}
- .st-key-bottom_nav .stButton > button {
-   width: 100% !important;
-   min-height: 54px !important;
-   border: 0 !important;
-   border-radius: 18px !important;
-   background: #111 !important;
-   color: #eee !important;
-   font-size: 11px !important;
-   font-weight: 900 !important;
-   padding: 4px 1px !important;
-   line-height: 1.15 !important;
-   white-space: pre-line !important;
+
+ .st-key-bottom_nav [data-testid="column"] > div{
+   width:100%!important;
+   min-width:0!important;
  }
- .st-key-bottom_nav .stButton > button[kind="primary"] {
-   background: #f97316 !important;
-   color: #111 !important;
+
+ .st-key-bottom_nav .stButton{
+   width:100%!important;
+   min-width:0!important;
  }
- @media (max-width: 640px) {
-   .block-container { padding-bottom: 92px !important; }
-   .st-key-bottom_nav { padding: 6px 4px 10px 4px !important; }
-   .st-key-bottom_nav [data-testid="stHorizontalBlock"] {
-     display: flex !important;
-     flex-direction: row !important;
-     flex-wrap: nowrap !important;
-     gap: 2px !important;
+
+ .st-key-bottom_nav .stButton > button{
+   width:100%!important;
+   min-width:0!important;
+   height:56px!important;
+   min-height:56px!important;
+   border:0!important;
+   border-radius:15px!important;
+   background:#111!important;
+   color:#eee!important;
+   font-size:10px!important;
+   font-weight:900!important;
+   padding:2px 0!important;
+   line-height:1.05!important;
+   white-space:pre-line!important;
+   overflow:hidden!important;
+   text-align:center!important;
+ }
+
+ .st-key-bottom_nav .stButton > button[kind="primary"]{
+   background:#f97316!important;
+   color:#111!important;
+ }
+
+ @media (max-width:640px){
+   .st-key-bottom_nav{
+     height:70px!important;
+     padding:4px 2px calc(4px + env(safe-area-inset-bottom)) 2px!important;
    }
-   .st-key-bottom_nav [data-testid="column"] {
-     width: 16.66% !important;
-     flex: 1 1 0 !important;
-     min-width: 0 !important;
+
+   .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+     width:100vw!important;
+     max-width:100vw!important;
+     height:60px!important;
+     grid-template-columns:repeat(6, minmax(0, 1fr))!important;
+     gap:1px!important;
    }
-   .st-key-bottom_nav .stButton > button {
-     min-height: 50px !important;
-     font-size: 10px !important;
-     border-radius: 16px !important;
+
+   .st-key-bottom_nav .stButton > button{
+     height:56px!important;
+     min-height:56px!important;
+     border-radius:14px!important;
+     font-size:9px!important;
+     padding:1px 0!important;
+   }
+ }
+
+ @media (max-width:390px){
+   .st-key-bottom_nav .stButton > button{
+     font-size:8px!important;
    }
  }
  </style>
