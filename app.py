@@ -489,41 +489,43 @@ def new_order(db):
   st.session_state.pedido_itens_temp=[]
 
  st.markdown('### Cliente')
- busca_cliente=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='pedido_busca_cliente')
- clientes_filtrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)] if busca_cliente else clients[:20]
 
- if not clientes_filtrados:
-  st.warning('Nenhum cliente encontrado.')
-  clientes_filtrados=clients[:1]
-
- c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:x['name'], key='pedido_cliente')
+ # Campo único: o próprio selectbox permite pesquisar digitando.
+ c=st.selectbox(
+  'Cliente',
+  clients,
+  format_func=lambda x:x['name'],
+  key='pedido_cliente'
+ )
 
  if st.session_state.role=='admin':
   s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
  else:
   s=next(x for x in sales if x['id']==st.session_state.sales_id)
 
- col_desc,col_prazo=st.columns([1,2])
- desconto=col_desc.text_input('Desconto', key='pedido_desconto', placeholder='Ex: 5%')
- prazo_pagamento=col_prazo.text_input('Prazo de pagamento', key='pedido_prazo_pagamento', placeholder='Ex: 7 dias')
+ prazo_pagamento=st.text_input('Prazo de pagamento', key='pedido_prazo_pagamento', placeholder='Ex: À vista, 7 dias, 14/21 dias')
 
  st.markdown('### Produto')
- busca_prod=st.text_input('Pesquisar produto por nome ou código', key='pedido_busca_produto')
- produtos_filtrados=[p for p in products if combina_inicio(campos_produto(p), busca_prod)][:20] if busca_prod else []
 
- if busca_prod and not produtos_filtrados:
-  st.warning('Nenhum produto encontrado.')
+ # Campo único: o próprio selectbox permite pesquisar digitando.
+ p=st.selectbox(
+  'Produto',
+  [None]+products,
+  format_func=lambda x:'Selecione o produto' if x is None else x['name'],
+  key='pedido_produto_unico'
+ )
 
- if produtos_filtrados:
-  p=st.selectbox('Produto encontrado', produtos_filtrados, format_func=lambda x:x['name'], key='pedido_produto_unico')
-  colq,colb=st.columns([1,2])
+ if p:
+  colq,cold,colb=st.columns([1,1,2])
   qtd=colq.number_input('Qtd', min_value=1, step=1, key='pedido_qtd_unica')
+  desconto=cold.text_input('Desconto', key='pedido_desconto', placeholder='Ex: 5%')
   if colb.button('Adicionar ao pedido', key='btn_add_produto_pedido'):
    item={
     'productId':p['id'],
     'productName':p['name'],
     'quantity':int(qtd),
     'price':float(p['price']),
+    'discount':desconto,
     'commissionRate':p.get('commissionRate',db['commissionRate'])
    }
    st.session_state.pedido_itens_temp.append(item)
@@ -538,8 +540,10 @@ def new_order(db):
 
   for idx,it in enumerate(st.session_state.pedido_itens_temp):
    subtotal=it['quantity']*it['price']
+   desc=it.get('discount','')
    col1,col2=st.columns([4,1])
-   col1.markdown(f'<div class="card"><b>{it["productName"]}</b><br>Qtd: {it["quantity"]} • Unitário: {money(it["price"])}<br><b>Subtotal: {money(subtotal)}</b></div>', unsafe_allow_html=True)
+   texto_desc=f'<br>Desconto: {desc}' if desc else ''
+   col1.markdown(f'<div class="card"><b>{it["productName"]}</b><br>Qtd: {it["quantity"]} • Unitário: {money(it["price"])}{texto_desc}<br><b>Subtotal: {money(subtotal)}</b></div>', unsafe_allow_html=True)
    if col2.button('Excluir', key=f'excluir_item_temp_{idx}'):
     st.session_state.pedido_itens_temp.pop(idx)
     st.rerun()
@@ -557,6 +561,7 @@ def new_order(db):
    total=sum(it['quantity']*it['price'] for it in items)
    rate=float(db['commissionRate'])
    maxnum=proximo_pedido(db['orders'])
+   descontos=', '.join([it.get('discount','') for it in items if it.get('discount','')])
 
    db['orders'].insert(0,{
     'id':uid('ord'),
@@ -568,7 +573,7 @@ def new_order(db):
     'clientName':c['name'],
     'items':items,
     'total':total,
-    'discount':desconto,
+    'discount':descontos,
     'paymentTerm':prazo_pagamento,
     'commissionRate':rate,
     'commissionAmount':round(total*rate/100,2),
