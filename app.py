@@ -3,6 +3,7 @@ from datetime import datetime
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
@@ -377,6 +378,82 @@ def header(db):
  user=st.session_state.get('user_name','')
  st.markdown(f'''<div class="top"><div class="brand"><div class="logo">🐯</div><div><div class="sub">DISTRIBUIDORA</div><div class="title">{db.get('systemName','TIGRÃO')}</div><div style="color:#aaa;font-size:12px">{user}</div></div></div></div>''', unsafe_allow_html=True)
 
+
+def tigrinho_salvo():
+ if not st.session_state.get('show_tigrinho_salvo'):
+  return
+
+ components.html("""
+ <div id="tigrinho" style="
+   position:fixed;
+   top:28px;
+   right:22px;
+   z-index:999999999;
+   background:white;
+   border:3px solid #fb923c;
+   border-radius:24px;
+   padding:12px 16px;
+   box-shadow:0 10px 35px rgba(0,0,0,.25);
+   text-align:center;
+   font-family:Arial,sans-serif;
+   animation:entraSai 1.8s ease-in-out forwards;
+ ">
+   <div style="font-size:58px;line-height:1">🐯</div>
+   <div style="font-size:15px;font-weight:900;color:#111;margin-top:4px">
+     Pedido salvo!
+   </div>
+ </div>
+
+ <script>
+ function somTigrinho(){
+   try{
+     const AudioContext = window.AudioContext || window.webkitAudioContext;
+     const ctx = new AudioContext();
+
+     const osc = ctx.createOscillator();
+     const gain = ctx.createGain();
+     const filter = ctx.createBiquadFilter();
+
+     osc.type = "sawtooth";
+     osc.frequency.setValueAtTime(160, ctx.currentTime);
+     osc.frequency.exponentialRampToValueAtTime(75, ctx.currentTime + 0.45);
+
+     filter.type = "lowpass";
+     filter.frequency.setValueAtTime(500, ctx.currentTime);
+
+     gain.gain.setValueAtTime(0.001, ctx.currentTime);
+     gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + 0.08);
+     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+
+     osc.connect(filter);
+     filter.connect(gain);
+     gain.connect(ctx.destination);
+
+     osc.start();
+     osc.stop(ctx.currentTime + 0.6);
+   }catch(e){}
+ }
+
+ setTimeout(somTigrinho, 120);
+ setTimeout(function(){
+   const t=document.getElementById("tigrinho");
+   if(t){t.remove();}
+ }, 1900);
+ </script>
+
+ <style>
+ @keyframes entraSai{
+   0%{opacity:0;transform:translateY(-25px) scale(.8);}
+   15%{opacity:1;transform:translateY(0) scale(1);}
+   75%{opacity:1;transform:translateY(0) scale(1);}
+   100%{opacity:0;transform:translateY(-25px) scale(.8);}
+ }
+ </style>
+ """, height=0)
+
+ st.session_state.show_tigrinho_salvo=False
+
+
 def nav():
  tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
 
@@ -647,6 +724,7 @@ def new_order(db):
 
    save_db(db)
    st.session_state.pedido_itens_temp=[]
+   st.session_state.show_tigrinho_salvo=True
    st.success('Pedido salvo com sucesso')
    st.session_state.tab='orders'
    st.rerun()
@@ -1030,5 +1108,5 @@ garantir_lixeira(db)
 if 'auth' not in st.session_state: st.session_state.auth=False
 if 'tab' not in st.session_state: st.session_state.tab='dashboard'
 if not st.session_state.auth: login(db); st.stop()
-header(db); nav()
+header(db); nav(); tigrinho_salvo()
 {'dashboard':dashboard,'newOrder':new_order,'orders':orders_page,'clients':clients_page,'products':products_page,'more':more_page}[st.session_state.tab](db)
