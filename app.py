@@ -56,6 +56,28 @@ def save_db(db):
 def money(v): return f"R$ {float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X','.')
 def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
+def proximo_codigo(lista, campo='code'):
+ nums=[]
+ for item in lista:
+  valor=item.get(campo) or item.get('codigo') or ''
+  n=so_numeros(valor)
+  if n:
+   try:
+    nums.append(int(n))
+   except:
+    pass
+ return str(max(nums, default=0)+1)
+
+def proximo_pedido(orders):
+ nums=[]
+ for o in orders:
+  try:
+   nums.append(int(o.get('orderNumber',0)))
+  except:
+   pass
+ return max(nums, default=0)+1
+
+
 def normalizar(txt):
  txt=str(txt or '').lower().strip()
  troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
@@ -507,7 +529,7 @@ def new_order(db):
   else:
    total=sum(it['quantity']*it['price'] for it in items)
    rate=float(db['commissionRate'])
-   maxnum=max([o['orderNumber'] for o in db['orders']], default=-1)+1
+   maxnum=proximo_pedido(db['orders'])
 
    db['orders'].insert(0,{
     'id':uid('ord'),
@@ -580,8 +602,10 @@ def clients_page(db):
     st.session_state['cliente_estado']=dados.get('state','')
     st.success('Dados encontrados. Confira e clique em Salvar cliente.')
 
+  codigo_auto=proximo_codigo(db['clients'])
+  st.info(f'Código automático do próximo cliente: {codigo_auto}')
+
   with st.form('cli'):
-   codigo=st.text_input('Código do cliente', key='cliente_codigo')
    n=st.text_input('Nome / Razão social', key='cliente_nome')
    doc=st.text_input('CNPJ/CPF', key='cliente_doc')
    em=st.text_input('E-mail', key='cliente_email')
@@ -590,6 +614,7 @@ def clients_page(db):
    uf=st.text_input('Estado', key='cliente_estado')
 
    if st.form_submit_button('Salvar cliente') and n:
+    codigo=proximo_codigo(db['clients'])
     db['clients'].insert(0,{
      'id':uid('cli'),
      'code':codigo,
@@ -615,48 +640,39 @@ def clients_page(db):
 
 def products_page(db):
  st.subheader('🛒 Produtos')
-
  if st.session_state.role=='admin':
   with st.expander('Cadastrar produto'):
+   codigo_auto=proximo_codigo(db['products'], campo='sku')
+   st.info(f'Código automático do próximo produto: {codigo_auto}')
+
    with st.form('prod'):
-    sku=st.text_input('Código/SKU', key='prod_sku')
     n=st.text_input('Nome', key='prod_nome')
     cat=st.text_input('Categoria', key='prod_categoria')
     supplier=st.text_input('Fornecedor', key='prod_fornecedor')
     price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco')
     stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque')
     cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
-
     if st.form_submit_button('Salvar produto') and n:
-     db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
-     save_db(db)
-     st.rerun()
+     sku=proximo_codigo(db['products'], campo='sku')
+     db['products'].insert(0,{'id':uid('prod'),'code':sku,'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
+     save_db(db); st.rerun()
 
- fornecedores = sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
- fornecedor_filtro = st.selectbox('Filtrar por fornecedor', ['Todos'] + fornecedores, key='filtro_fornecedor_produtos')
-
+ fornecedores=sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
+ fornecedor_filtro=st.selectbox('Filtrar por fornecedor', ['Todos']+fornecedores, key='filtro_fornecedor_produtos')
  busca=st.text_input('Pesquisar produto por nome ou código', key='busca_produtos')
 
  produtos_filtrados=[]
  for p in db['products']:
-  fornecedor_produto = p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
-
-  if fornecedor_filtro != 'Todos' and fornecedor_produto != fornecedor_filtro:
-   continue
-
-  if busca and not combina_inicio(campos_produto(p), busca):
-   continue
-
+  fornecedor_produto=p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
+  if fornecedor_filtro!='Todos' and fornecedor_produto!=fornecedor_filtro: continue
+  if busca and not combina_inicio(campos_produto(p), busca): continue
   produtos_filtrados.append(p)
 
- if busca and not produtos_filtrados:
-  st.warning('Nenhum produto encontrado.')
- elif busca:
-  st.caption('Sugestões encontradas')
-
+ if busca and not produtos_filtrados: st.warning('Nenhum produto encontrado.')
  for p in produtos_filtrados:
-  fornecedor_produto = p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
-  st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br>Fornecedor: {fornecedor_produto}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
+  fornecedor_produto=p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
+  codigo=p.get('sku') or p.get('code') or ''
+  st.markdown(f'<div class="card"><b>{codigo} — {p["name"]}</b><br>{p["category"]}<br>Fornecedor: {fornecedor_produto}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
 
 def more_page(db):
  st.subheader('☰ Mais')
