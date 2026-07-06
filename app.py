@@ -870,18 +870,20 @@ def more_page(db):
    cpf=st.text_input('CPF', key='vend_cpf')
    ph=st.text_input('Telefone', key='vend_tel')
    pw=st.text_input('Senha',value='123', key='vend_senha')
+   senha_provisoria=st.checkbox('Senha provisória', value=True, key='vend_senha_provisoria')
    if st.form_submit_button('Salvar vendedor') and n:
     email_repetido=any(normalizar(v.get('email',''))==normalizar(em) and em for v in db['salespeople'])
     if email_repetido:
      st.error('Já existe vendedor com esse e-mail.')
     else:
-     db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':False})
+     db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':senha_provisoria})
      save_db(db); st.rerun()
 
  for s in db['salespeople']:
   with st.expander(f"{s['name']} — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}"):
    st.write('CPF:', s.get('cpf',''))
    st.write('Telefone:', s.get('phone',''))
+   st.write('Senha:', 'Provisória' if s.get('passwordIsTemporary') else 'Definitiva')
 
    col1,col2,col3=st.columns(3)
    editar=col1.button('Editar', key='edit_vend_'+s['id'])
@@ -909,6 +911,7 @@ def more_page(db):
      novo_tel=st.text_input('Telefone', value=s.get('phone',''), key='edit_vend_tel_'+s['id'])
      nova_senha=st.text_input('Senha', value=s.get('password','123'), key='edit_vend_senha_'+s['id'])
      ativo=st.checkbox('Ativo', value=bool(s.get('active',True)), key='edit_vend_ativo_'+s['id'])
+     senha_provisoria_edit=st.checkbox('Senha provisória', value=bool(s.get('passwordIsTemporary',False)), key='edit_vend_senha_provisoria_'+s['id'])
      salvar=st.form_submit_button('Salvar edição')
      cancelar=st.form_submit_button('Cancelar')
 
@@ -926,6 +929,7 @@ def more_page(db):
       s['cpf']=novo_cpf
       s['phone']=novo_tel
       s['password']=nova_senha
+      s['passwordIsTemporary']=senha_provisoria_edit
       s['active']=ativo
       save_db(db)
       st.session_state.pop('editando_vendedor', None)
