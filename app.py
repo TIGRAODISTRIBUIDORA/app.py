@@ -13,14 +13,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 STATUS=['Pendente','Faturado','Entregue','Cancelado']
 
 INITIAL_PRODUCTS=[
- {'id':'prod-1','name':'Cerveja Heineken Long Neck 330ml','sku':'HEI-001','price':8.50,'stock':120,'category':'Cervejas','commissionRate':3},
- {'id':'prod-2','name':'Cigarro Rothmans Red Box','sku':'ROT-002','price':9.75,'stock':450,'category':'Tabacaria','commissionRate':5},
- {'id':'prod-3','name':'Refrigerante Coca-Cola 2L','sku':'COC-003','price':11.90,'stock':250,'category':'Refrigerantes','commissionRate':4},
- {'id':'prod-4','name':'Energético Monster Energy 473ml','sku':'MON-004','price':10.50,'stock':180,'category':'Energéticos','commissionRate':4},
- {'id':'prod-5','name':'Água Mineral Sem Gás 500ml','sku':'AGU-005','price':2.50,'stock':600,'category':'Águas','commissionRate':2},
- {'id':'prod-6','name':'Cerveja Amstel Lata 350ml','sku':'AMS-006','price':4.20,'stock':320,'category':'Cervejas','commissionRate':3},
- {'id':'prod-7','name':'Vodka Smirnoff 998ml','sku':'SMI-007','price':39.90,'stock':65,'category':'Destilados','commissionRate':4},
- {'id':'prod-8','name':'Whisky Johnnie Walker Red Label 1L','sku':'JWL-008','price':99.90,'stock':40,'category':'Destilados','commissionRate':4},
+ {'id':'prod-1','name':'Cerveja Heineken Long Neck 330ml','sku':'HEI-001','price':8.50,'stock':120,'category':'Cervejas','supplier':'Heineken','commissionRate':3},
+ {'id':'prod-2','name':'Cigarro Rothmans Red Box','sku':'ROT-002','price':9.75,'stock':450,'category':'Tabacaria','supplier':'Souza Cruz','commissionRate':5},
+ {'id':'prod-3','name':'Refrigerante Coca-Cola 2L','sku':'COC-003','price':11.90,'stock':250,'category':'Refrigerantes','supplier':'Coca-Cola','commissionRate':4},
+ {'id':'prod-4','name':'Energético Monster Energy 473ml','sku':'MON-004','price':10.50,'stock':180,'category':'Energéticos','supplier':'Monster','commissionRate':4},
+ {'id':'prod-5','name':'Água Mineral Sem Gás 500ml','sku':'AGU-005','price':2.50,'stock':600,'category':'Águas','supplier':'Fornecedor Geral','commissionRate':2},
+ {'id':'prod-6','name':'Cerveja Amstel Lata 350ml','sku':'AMS-006','price':4.20,'stock':320,'category':'Cervejas','supplier':'Heineken','commissionRate':3},
+ {'id':'prod-7','name':'Vodka Smirnoff 998ml','sku':'SMI-007','price':39.90,'stock':65,'category':'Destilados','supplier':'Diageo','commissionRate':4},
+ {'id':'prod-8','name':'Whisky Johnnie Walker Red Label 1L','sku':'JWL-008','price':99.90,'stock':40,'category':'Destilados','supplier':'Diageo','commissionRate':4},
 ]
 INITIAL_CLIENTS=[
  {'id':'cli-1','name':'nelson das galaxie','document':'123.456.789-00','email':'nelson@galaxie.com','phone':'(11) 98888-7777','city':'São Paulo','state':'SP'},
@@ -64,8 +64,6 @@ def header(db):
  st.markdown(f'''<div class="top"><div class="brand"><div class="logo">🐯</div><div><div class="sub">DISTRIBUIDORA</div><div class="title">{db.get('systemName','TIGRÃO')}</div><div style="color:#aaa;font-size:12px">{user}</div></div></div></div>''', unsafe_allow_html=True)
 
 def nav():
- # IMPORTANTE: não usamos mais HTML <form> aqui.
- # O <form> fazia a página recarregar no celular e o Streamlit perdia o login.
  tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
 
  st.markdown('''
@@ -95,9 +93,7 @@ def nav():
    flex: 1 1 0 !important;
    padding: 0 !important;
  }
- .st-key-bottom_nav [data-testid="column"] > div {
-   width: 100% !important;
- }
+ .st-key-bottom_nav [data-testid="column"] > div { width: 100% !important; }
  .st-key-bottom_nav .stButton {width: 100% !important;}
  .st-key-bottom_nav .stButton > button {
    width: 100% !important;
@@ -233,16 +229,38 @@ def clients_page(db):
 
 def products_page(db):
  st.subheader('🛒 Produtos')
+
  if st.session_state.role=='admin':
   with st.expander('Cadastrar produto'):
    with st.form('prod'):
-    sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
+    sku=st.text_input('Código/SKU', key='prod_sku')
+    n=st.text_input('Nome', key='prod_nome')
+    cat=st.text_input('Categoria', key='prod_categoria')
+    supplier=st.text_input('Fornecedor', key='prod_fornecedor')
+    price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco')
+    stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque')
+    cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
+
     if st.form_submit_button('Salvar produto') and n:
-     db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
- busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
+     db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
+     save_db(db)
+     st.rerun()
+
+ fornecedores = sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
+ fornecedor_filtro = st.selectbox('Filtrar por fornecedor', ['Todos'] + fornecedores, key='filtro_fornecedor_produtos')
+
+ busca=st.text_input('Pesquisar produto por código, nome, categoria ou fornecedor', key='busca_produtos')
+
  for p in db['products']:
-  if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
-  st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
+  fornecedor_produto = p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
+
+  if fornecedor_filtro != 'Todos' and fornecedor_produto != fornecedor_filtro:
+   continue
+
+  if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower():
+   continue
+
+  st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br>Fornecedor: {fornecedor_produto}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
 
 def more_page(db):
  st.subheader('☰ Mais')
