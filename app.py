@@ -372,6 +372,163 @@ def css():
    color:#111!important;
  }
 
+ 
+ /* AJUSTE VISUAL MOBILE - NOVO PEDIDO */
+ .stApp{
+   background:#fff!important;
+ }
+
+ .block-container{
+   padding-top:8px!important;
+   padding-bottom:120px!important;
+ }
+
+ .top{
+   background:#050505!important;
+   border-radius:0 0 26px 26px!important;
+   margin-bottom:18px!important;
+ }
+
+ .stSelectbox label,
+ .stTextInput label,
+ .stNumberInput label{
+   font-size:18px!important;
+   font-weight:800!important;
+   color:#111!important;
+ }
+
+ div[data-baseweb="select"] > div{
+   background:#fff!important;
+   border:1.8px solid #fb923c!important;
+   border-radius:16px!important;
+   min-height:56px!important;
+   color:#111!important;
+ }
+
+ div[data-baseweb="select"] *{
+   color:#111!important;
+ }
+
+ .stTextInput input,
+ .stNumberInput input{
+   background:#fff!important;
+   color:#111!important;
+   border:1.8px solid #fb923c!important;
+   border-radius:16px!important;
+   min-height:56px!important;
+   font-size:17px!important;
+ }
+
+ .stTextInput input::placeholder{
+   color:#777!important;
+ }
+
+ .stButton>button{
+   min-height:58px!important;
+   border-radius:18px!important;
+   font-size:17px!important;
+   font-weight:900!important;
+ }
+
+ .st-key-btn_salvar_pedido_final button{
+   background:#fb923c!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .st-key-btn_limpar_pedido_temp button{
+   background:#fff!important;
+   color:#ea580c!important;
+   border:1.8px solid #fb923c!important;
+ }
+
+ .st-key-btn_add_produto_pedido button{
+   background:#fdba74!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ div[class*="st-key-excluir_item_temp_"] button,
+ div[class*="st-key-del_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .stAlert{
+   border-radius:16px!important;
+ }
+
+ .st-key-bottom_nav{
+   height:86px!important;
+   border-radius:22px 22px 0 0!important;
+   padding-top:8px!important;
+ }
+
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+   height:72px!important;
+   max-width:520px!important;
+   padding:0 6px!important;
+ }
+
+ .st-key-bottom_nav .stButton>button{
+   height:62px!important;
+   min-height:62px!important;
+   font-size:12px!important;
+   line-height:1.05!important;
+   border-radius:18px!important;
+   padding:2px 0!important;
+ }
+
+ .st-key-nav_newOrder button[kind="primary"]{
+   background:#fb923c!important;
+   color:#111!important;
+ }
+
+ .st-key-nav_products button{
+   background:#111!important;
+   color:#eee!important;
+ }
+
+ .st-key-nav_products button[kind="primary"]{
+   background:#bbf7d0!important;
+   color:#111!important;
+ }
+
+ @media(max-width:640px){
+   h1,h2,h3{
+     letter-spacing:-.5px!important;
+   }
+
+   .block-container{
+     padding-left:18px!important;
+     padding-right:18px!important;
+   }
+
+   .top{
+     margin-left:-18px!important;
+     margin-right:-18px!important;
+   }
+
+   .st-key-bottom_nav{
+     height:88px!important;
+     padding-bottom:calc(6px + env(safe-area-inset-bottom))!important;
+   }
+
+   .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+     width:100%!important;
+     max-width:100%!important;
+     grid-template-columns:repeat(6,minmax(0,1fr))!important;
+     gap:3px!important;
+   }
+
+   .st-key-bottom_nav .stButton>button{
+     font-size:11px!important;
+     height:60px!important;
+     min-height:60px!important;
+   }
+ }
+
  </style>''', unsafe_allow_html=True)
 
 def header(db):
@@ -455,7 +612,7 @@ def tigrinho_salvo():
 
 
 def nav():
- tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
+ tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','•••','Mais')]
 
  st.markdown('''
  <style>
@@ -619,7 +776,7 @@ def dashboard(db):
   st.markdown(f'<div class="card" style="{style}"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{o["salespersonName"]} • {o["status"]}<br><h3>{money(o["total"])}</h3></div>',unsafe_allow_html=True)
 
 def new_order(db):
- st.subheader('➕ Novo Pedido')
+ st.markdown('## ➕ Novo Pedido')
  clients=db['clients']; products=db['products']; sales=db['salespeople']
 
  if 'pedido_itens_temp' not in st.session_state:
