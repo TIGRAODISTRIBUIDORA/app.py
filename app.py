@@ -78,6 +78,29 @@ def proximo_pedido(orders):
  return max(nums, default=0)+1
 
 
+def cliente_duplicado(db, documento):
+ doc=so_numeros(documento)
+ if not doc:
+  return False
+ for c in db.get('clients',[]):
+  if so_numeros(c.get('document','')) == doc:
+   return True
+ return False
+
+def produto_duplicado(db, nome, codigo=''):
+ nome_norm=normalizar(nome)
+ codigo_norm=normalizar(codigo)
+ for p in db.get('products',[]):
+  nome_existente=normalizar(p.get('name',''))
+  codigo_existente=normalizar(p.get('sku','') or p.get('code',''))
+  if nome_norm and nome_existente == nome_norm:
+   return True
+  if codigo_norm and codigo_existente == codigo_norm:
+   return True
+ return False
+
+
+
 def normalizar(txt):
  txt=str(txt or '').lower().strip()
  troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
@@ -614,19 +637,22 @@ def clients_page(db):
    uf=st.text_input('Estado', key='cliente_estado')
 
    if st.form_submit_button('Salvar cliente') and n:
-    codigo=proximo_codigo(db['clients'])
-    db['clients'].insert(0,{
-     'id':uid('cli'),
-     'code':codigo,
-     'name':n,
-     'document':doc,
-     'email':em,
-     'phone':ph,
-     'city':city,
-     'state':uf
-    })
-    save_db(db)
-    st.rerun()
+    if cliente_duplicado(db, doc):
+     st.error('Cliente já cadastrado com esse CNPJ/CPF.')
+    else:
+     codigo=proximo_codigo(db['clients'])
+     db['clients'].insert(0,{
+      'id':uid('cli'),
+      'code':codigo,
+      'name':n,
+      'document':doc,
+      'email':em,
+      'phone':ph,
+      'city':city,
+      'state':uf
+     })
+     save_db(db)
+     st.rerun()
 
  busca=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='busca_clientes')
  encontrados=[c for c in db['clients'] if combina_inicio(campos_cliente(c), busca)] if busca else db['clients']
@@ -653,9 +679,12 @@ def products_page(db):
     stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque')
     cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
-     sku=proximo_codigo(db['products'], campo='sku')
-     db['products'].insert(0,{'id':uid('prod'),'code':sku,'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
-     save_db(db); st.rerun()
+     if produto_duplicado(db, n):
+      st.error('Produto já cadastrado com esse nome.')
+     else:
+      sku=proximo_codigo(db['products'], campo='sku')
+      db['products'].insert(0,{'id':uid('prod'),'code':sku,'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
+      save_db(db); st.rerun()
 
  fornecedores=sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
  fornecedor_filtro=st.selectbox('Filtrar por fornecedor', ['Todos']+fornecedores, key='filtro_fornecedor_produtos')
