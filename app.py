@@ -11,7 +11,7 @@ DATA_DIR='dados_tigrao'
 DB_FILE=os.path.join(DATA_DIR,'banco.json')
 os.makedirs(DATA_DIR, exist_ok=True)
 
-STATUS=['Pendente','Faturado','Entregue','Cancelado']
+STATUS=['Pendente','Faturado','Entregue','Cancelado','Com inconsistência']
 
 INITIAL_PRODUCTS=[
  {'id':'prod-1','name':'Cerveja Heineken Long Neck 330ml','sku':'HEI-001','price':8.50,'stock':120,'category':'Cervejas','supplier':'Heineken','commissionRate':3},
@@ -55,6 +55,17 @@ def save_db(db):
 
 def money(v): return f"R$ {float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X','.')
 def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+def status_card_style(status):
+ status=str(status or '').lower()
+ if 'pendente' in status:
+  return 'background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;'
+ if 'faturado' in status:
+  return 'background:#14532d;border:1px solid #166534;color:#ffffff;'
+ if 'inconsist' in status or 'incosit' in status:
+  return 'background:#fef3c7;border:1px solid #fde68a;color:#78350f;'
+ return 'background:white;border:1px solid #eee;color:#171717;'
+
 
 def proximo_codigo(lista, campo='code'):
  nums=[]
@@ -505,7 +516,8 @@ def dashboard(db):
  c1,c2,c3=st.columns(3); c1.metric('Pedidos',len(orders)); c2.metric('Clientes',len(db['clients'])); c3.metric('Produtos',len(db['products']))
  st.subheader('Últimos pedidos')
  for o in sorted(orders,key=lambda x:x['orderNumber'],reverse=True)[:10]:
-  st.markdown(f'<div class="card"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{o["salespersonName"]} • {o["status"]}<br><h3>{money(o["total"])}</h3></div>',unsafe_allow_html=True)
+  style=status_card_style(o.get('status',''))
+  st.markdown(f'<div class="card" style="{style}"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{o["salespersonName"]} • {o["status"]}<br><h3>{money(o["total"])}</h3></div>',unsafe_allow_html=True)
 
 def new_order(db):
  st.subheader('➕ Novo Pedido')
@@ -629,7 +641,9 @@ def orders_page(db):
   campos=[o.get('orderNumber',''),o.get('clientName',''),codigo_cliente(cli),cli.get('document','')]
   if busca and not combina_inicio(campos, busca):
    continue
-  with st.expander(f"#{o['orderNumber']} — {o['clientName']} — {money(o['total'])} — {o['status']}"):
+  style=status_card_style(o.get('status',''))
+  st.markdown(f'<div class="card" style="{style}"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{money(o["total"])} • {o["status"]}</div>', unsafe_allow_html=True)
+  with st.expander(f"Ver detalhes do pedido #{o['orderNumber']}"):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
    if cli:
     st.write('Cliente:', f"{codigo_cliente(cli)} — {cli.get('document','')}")
