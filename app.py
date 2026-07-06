@@ -510,6 +510,26 @@ def filtered_orders(db):
   orders=[o for o in orders if o.get('salespersonId')==sid]
  return orders
 
+def garantir_lixeira(db):
+ if 'deleted_orders' not in db:
+  db['deleted_orders']=[]
+
+def excluir_pedido_com_motivo(db, pedido_id, motivo):
+ garantir_lixeira(db)
+ pedido=next((o for o in db.get('orders',[]) if o.get('id')==pedido_id), None)
+ if not pedido:
+  return False
+ pedido_excluido=dict(pedido)
+ pedido_excluido['deletedAt']=datetime.now().isoformat(timespec='seconds')
+ pedido_excluido['deletedBy']=st.session_state.get('user_name','')
+ pedido_excluido['deleteReason']=motivo
+ pedido_excluido['originalStatus']=pedido.get('status','')
+ db['deleted_orders'].insert(0, pedido_excluido)
+ db['orders']=[o for o in db.get('orders',[]) if o.get('id')!=pedido_id]
+ save_db(db)
+ return True
+
+
 def dashboard(db):
  orders=filtered_orders(db); total=sum(o['total'] for o in orders); com=sum(o.get('commissionAmount',0) for o in orders)
  c1,c2=st.columns(2)
@@ -659,7 +679,35 @@ def orders_page(db):
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
     if col1.button('Atualizar', key='up'+o['id']): o['status']=ns; save_db(db); st.rerun()
-    if col2.button('Excluir pedido', key='del'+o['id']): db['orders']=[x for x in db['orders'] if x['id']!=o['id']]; save_db(db); st.rerun()
+    if col2.button('Excluir pedido', key='del'+o['id']):
+     st.session_state['pedido_para_excluir']=o['id']
+     st.rerun()
+
+    if st.session_state.get('pedido_para_excluir')==o['id']:
+     st.markdown('#### Confirmar exclusão')
+     motivo=st.text_area('Motivo da exclusão', key='motivo_exclusao_'+o['id'], placeholder='Informe o motivo da exclusão do pedido')
+
+     confirmado=True
+     if o.get('status')=='Faturado':
+      confirmado=st.checkbox('Confirmo que desejo excluir este pedido faturado', key='confirma_excluir_faturado_'+o['id'])
+      st.warning('Pedido faturado exige segunda confirmação para exclusão.')
+
+     colc1,colc2=st.columns(2)
+
+     if colc1.button('Confirmar exclusão', key='confirmar_exclusao_'+o['id']):
+      if not motivo.strip():
+       st.error('Informe o motivo da exclusão.')
+      elif not confirmado:
+       st.error('Confirme a exclusão do pedido faturado.')
+      else:
+       excluir_pedido_com_motivo(db, o['id'], motivo.strip())
+       st.session_state.pop('pedido_para_excluir', None)
+       st.success('Pedido excluído e enviado para Pedidos excluídos.')
+       st.rerun()
+
+     if colc2.button('Cancelar exclusão', key='cancelar_exclusao_'+o['id']):
+      st.session_state.pop('pedido_para_excluir', None)
+      st.rerun()
 
 def clients_page(db):
  st.subheader('👥 Clientes')
@@ -945,6 +993,20 @@ def more_page(db):
      st.session_state.pop('editando_vendedor', None)
      st.rerun()
 
+ st.markdown('### Pedidos excluídos')
+ garantir_lixeira(db)
+ if not db.get('deleted_orders'):
+  st.info('Nenhum pedido excluído.')
+ else:
+  for o in db.get('deleted_orders',[]):
+   with st.expander(f"#{o.get('orderNumber','')} — {o.get('clientName','')} — {money(o.get('total',0))}"):
+    st.write('Status original:', o.get('originalStatus', o.get('status','')))
+    st.write('Excluído em:', o.get('deletedAt',''))
+    st.write('Excluído por:', o.get('deletedBy',''))
+    st.write('Motivo:', o.get('deleteReason',''))
+    st.write('Vendedor:', o.get('salespersonName',''))
+    st.dataframe(pd.DataFrame(o.get('items',[])), use_container_width=True, hide_index=True)
+
  st.markdown('### Comissão')
  rate=st.number_input('Comissão geral %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='comissao_geral')
  if st.button('Salvar comissão', key='btn_salvar_comissao'): db['commissionRate']=rate; save_db(db); st.success('Salvo')
@@ -964,6 +1026,7 @@ def more_page(db):
  if col2.button('Limpar banco', key='btn_limpar_banco'): save_db({'app':'Tigrão Distribuidora','systemName':'TIGRÃO','commissionRate':7,'products':[],'clients':[],'salespeople':INITIAL_SALES[:1],'orders':[]}); st.rerun()
 
 css(); db=load_db()
+garantir_lixeira(db)
 if 'auth' not in st.session_state: st.session_state.auth=False
 if 'tab' not in st.session_state: st.session_state.tab='dashboard'
 if not st.session_state.auth: login(db); st.stop()
