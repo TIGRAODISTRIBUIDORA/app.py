@@ -613,7 +613,6 @@ def clients_page(db):
 
   if st.button('Buscar dados do CNPJ', key='btn_buscar_cnpj_cliente'):
    dados, erro=buscar_cnpj_internet(cnpj_busca)
-
    if erro:
     st.error(erro)
    else:
@@ -641,16 +640,7 @@ def clients_page(db):
      st.error('Cliente já cadastrado com esse CNPJ/CPF.')
     else:
      codigo=proximo_codigo(db['clients'])
-     db['clients'].insert(0,{
-      'id':uid('cli'),
-      'code':codigo,
-      'name':n,
-      'document':doc,
-      'email':em,
-      'phone':ph,
-      'city':city,
-      'state':uf
-     })
+     db['clients'].insert(0,{'id':uid('cli'),'code':codigo,'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf})
      save_db(db)
      st.rerun()
 
@@ -662,7 +652,58 @@ def clients_page(db):
 
  for c in encontrados:
   cod=codigo_cliente(c)
-  st.markdown(f'<div class="card"><b>{cod} — {c["name"]}</b><br>{c["document"]}<br>{c["phone"]} • {c["city"]}/{c["state"]}</div>', unsafe_allow_html=True)
+  with st.expander(f'{cod} — {c["name"]}'):
+   st.write('CNPJ/CPF:', c.get('document',''))
+   st.write('Telefone:', c.get('phone',''))
+   st.write('Cidade/Estado:', f'{c.get("city","")}/{c.get("state","")}')
+
+   col1,col2=st.columns(2)
+   editar=col1.button('Editar', key='edit_cli_'+c['id'])
+   excluir=col2.button('Excluir', key='del_cli_'+c['id'])
+
+   if excluir:
+    usado=any(o.get('clientId')==c.get('id') for o in db.get('orders',[]))
+    if usado:
+     st.error('Não é possível excluir: esse cliente possui pedidos cadastrados.')
+    else:
+     db['clients']=[x for x in db['clients'] if x['id']!=c['id']]
+     save_db(db)
+     st.rerun()
+
+   if editar or st.session_state.get('editando_cliente')==c['id']:
+    st.session_state['editando_cliente']=c['id']
+    with st.form('form_edit_cliente_'+c['id']):
+     novo_nome=st.text_input('Nome / Razão social', value=c.get('name',''), key='edit_cli_nome_'+c['id'])
+     novo_doc=st.text_input('CNPJ/CPF', value=c.get('document',''), key='edit_cli_doc_'+c['id'])
+     novo_email=st.text_input('E-mail', value=c.get('email',''), key='edit_cli_email_'+c['id'])
+     novo_tel=st.text_input('Telefone', value=c.get('phone',''), key='edit_cli_tel_'+c['id'])
+     nova_cidade=st.text_input('Cidade', value=c.get('city',''), key='edit_cli_cidade_'+c['id'])
+     novo_estado=st.text_input('Estado', value=c.get('state',''), key='edit_cli_estado_'+c['id'])
+     salvar=st.form_submit_button('Salvar edição')
+     cancelar=st.form_submit_button('Cancelar')
+
+    if salvar:
+     doc_repetido=False
+     for outro in db['clients']:
+      if outro['id']!=c['id'] and so_numeros(outro.get('document',''))==so_numeros(novo_doc) and so_numeros(novo_doc):
+       doc_repetido=True
+
+     if doc_repetido:
+      st.error('Já existe outro cliente com esse CNPJ/CPF.')
+     else:
+      c['name']=novo_nome
+      c['document']=novo_doc
+      c['email']=novo_email
+      c['phone']=novo_tel
+      c['city']=nova_cidade
+      c['state']=novo_estado
+      save_db(db)
+      st.session_state.pop('editando_cliente', None)
+      st.rerun()
+
+    if cancelar:
+     st.session_state.pop('editando_cliente', None)
+     st.rerun()
 
 def products_page(db):
  st.subheader('🛒 Produtos')
@@ -697,28 +738,154 @@ def products_page(db):
   if busca and not combina_inicio(campos_produto(p), busca): continue
   produtos_filtrados.append(p)
 
- if busca and not produtos_filtrados: st.warning('Nenhum produto encontrado.')
+ if busca and not produtos_filtrados:
+  st.warning('Nenhum produto encontrado.')
+
  for p in produtos_filtrados:
   fornecedor_produto=p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
   codigo=p.get('sku') or p.get('code') or ''
-  st.markdown(f'<div class="card"><b>{codigo} — {p["name"]}</b><br>{p["category"]}<br>Fornecedor: {fornecedor_produto}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
+  with st.expander(f'{codigo} — {p["name"]}'):
+   st.write('Categoria:', p.get('category',''))
+   st.write('Fornecedor:', fornecedor_produto)
+   st.write('Preço:', money(p.get('price',0)))
+   st.write('Estoque:', p.get('stock',0))
+   st.write('Comissão:', f'{p.get("commissionRate",db["commissionRate"])}%')
+
+   if st.session_state.role=='admin':
+    col1,col2=st.columns(2)
+    editar=col1.button('Editar', key='edit_prod_'+p['id'])
+    excluir=col2.button('Excluir', key='del_prod_'+p['id'])
+
+    if excluir:
+     usado=False
+     for o in db.get('orders',[]):
+      for it in o.get('items',[]):
+       if it.get('productId')==p.get('id'):
+        usado=True
+     if usado:
+      st.error('Não é possível excluir: esse produto já foi usado em pedido.')
+     else:
+      db['products']=[x for x in db['products'] if x['id']!=p['id']]
+      save_db(db)
+      st.rerun()
+
+    if editar or st.session_state.get('editando_produto')==p['id']:
+     st.session_state['editando_produto']=p['id']
+     with st.form('form_edit_prod_'+p['id']):
+      novo_nome=st.text_input('Nome', value=p.get('name',''), key='edit_prod_nome_'+p['id'])
+      nova_cat=st.text_input('Categoria', value=p.get('category',''), key='edit_prod_cat_'+p['id'])
+      novo_forn=st.text_input('Fornecedor', value=p.get('supplier',''), key='edit_prod_forn_'+p['id'])
+      novo_preco=st.number_input('Preço', min_value=0.0, value=float(p.get('price',0)), step=.01, key='edit_prod_preco_'+p['id'])
+      novo_estoque=st.number_input('Estoque', min_value=0, value=int(p.get('stock',0)), step=1, key='edit_prod_estoque_'+p['id'])
+      nova_comissao=st.number_input('Comissão %', min_value=0.0, value=float(p.get('commissionRate',db['commissionRate'])), step=.5, key='edit_prod_comissao_'+p['id'])
+      salvar=st.form_submit_button('Salvar edição')
+      cancelar=st.form_submit_button('Cancelar')
+
+     if salvar:
+      repetido=False
+      for outro in db['products']:
+       if outro['id']!=p['id'] and normalizar(outro.get('name',''))==normalizar(novo_nome):
+        repetido=True
+
+      if repetido:
+       st.error('Já existe outro produto com esse nome.')
+      else:
+       p['name']=novo_nome
+       p['category']=nova_cat
+       p['supplier']=novo_forn
+       p['price']=novo_preco
+       p['stock']=novo_estoque
+       p['commissionRate']=nova_comissao
+       save_db(db)
+       st.session_state.pop('editando_produto', None)
+       st.rerun()
+
+     if cancelar:
+      st.session_state.pop('editando_produto', None)
+      st.rerun()
 
 def more_page(db):
  st.subheader('☰ Mais')
  if st.button('Sair', key='btn_sair'): st.session_state.clear(); st.rerun()
  if st.session_state.role!='admin': return
+
  st.markdown('### Vendedores')
  with st.expander('Cadastrar vendedor'):
   with st.form('sales'):
-   n=st.text_input('Nome', key='vend_nome'); em=st.text_input('E-mail', key='vend_email'); cpf=st.text_input('CPF', key='vend_cpf'); ph=st.text_input('Telefone', key='vend_tel'); pw=st.text_input('Senha',value='123', key='vend_senha')
+   n=st.text_input('Nome', key='vend_nome')
+   em=st.text_input('E-mail', key='vend_email')
+   cpf=st.text_input('CPF', key='vend_cpf')
+   ph=st.text_input('Telefone', key='vend_tel')
+   pw=st.text_input('Senha',value='123', key='vend_senha')
    if st.form_submit_button('Salvar vendedor') and n:
-    db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':False}); save_db(db); st.rerun()
+    email_repetido=any(normalizar(v.get('email',''))==normalizar(em) and em for v in db['salespeople'])
+    if email_repetido:
+     st.error('Já existe vendedor com esse e-mail.')
+    else:
+     db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':False})
+     save_db(db); st.rerun()
+
  for s in db['salespeople']:
-  col1,col2=st.columns([3,1]); col1.write(f"**{s['name']}** — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}")
-  if col2.button('Ativar/Inativar', key='a'+s['id']): s['active']=not s.get('active'); save_db(db); st.rerun()
+  with st.expander(f"{s['name']} — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}"):
+   st.write('CPF:', s.get('cpf',''))
+   st.write('Telefone:', s.get('phone',''))
+
+   col1,col2,col3=st.columns(3)
+   editar=col1.button('Editar', key='edit_vend_'+s['id'])
+   if col2.button('Ativar/Inativar', key='a'+s['id']):
+    s['active']=not s.get('active')
+    save_db(db)
+    st.rerun()
+   excluir=col3.button('Excluir', key='del_vend_'+s['id'])
+
+   if excluir:
+    usado=any(o.get('salespersonId')==s.get('id') for o in db.get('orders',[]))
+    if usado:
+     st.error('Não é possível excluir: esse vendedor possui pedidos cadastrados.')
+    else:
+     db['salespeople']=[x for x in db['salespeople'] if x['id']!=s['id']]
+     save_db(db)
+     st.rerun()
+
+   if editar or st.session_state.get('editando_vendedor')==s['id']:
+    st.session_state['editando_vendedor']=s['id']
+    with st.form('form_edit_vendedor_'+s['id']):
+     novo_nome=st.text_input('Nome', value=s.get('name',''), key='edit_vend_nome_'+s['id'])
+     novo_email=st.text_input('E-mail', value=s.get('email',''), key='edit_vend_email_'+s['id'])
+     novo_cpf=st.text_input('CPF', value=s.get('cpf',''), key='edit_vend_cpf_'+s['id'])
+     novo_tel=st.text_input('Telefone', value=s.get('phone',''), key='edit_vend_tel_'+s['id'])
+     nova_senha=st.text_input('Senha', value=s.get('password','123'), key='edit_vend_senha_'+s['id'])
+     ativo=st.checkbox('Ativo', value=bool(s.get('active',True)), key='edit_vend_ativo_'+s['id'])
+     salvar=st.form_submit_button('Salvar edição')
+     cancelar=st.form_submit_button('Cancelar')
+
+    if salvar:
+     email_repetido=False
+     for outro in db['salespeople']:
+      if outro['id']!=s['id'] and normalizar(outro.get('email',''))==normalizar(novo_email) and novo_email:
+       email_repetido=True
+
+     if email_repetido:
+      st.error('Já existe outro vendedor com esse e-mail.')
+     else:
+      s['name']=novo_nome
+      s['email']=novo_email
+      s['cpf']=novo_cpf
+      s['phone']=novo_tel
+      s['password']=nova_senha
+      s['active']=ativo
+      save_db(db)
+      st.session_state.pop('editando_vendedor', None)
+      st.rerun()
+
+    if cancelar:
+     st.session_state.pop('editando_vendedor', None)
+     st.rerun()
+
  st.markdown('### Comissão')
  rate=st.number_input('Comissão geral %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='comissao_geral')
  if st.button('Salvar comissão', key='btn_salvar_comissao'): db['commissionRate']=rate; save_db(db); st.success('Salvo')
+
  st.markdown('### Backup / Importação')
  st.download_button('Baixar backup JSON', data=json.dumps(db,ensure_ascii=False,indent=2).encode('utf-8'), file_name='tigrao_backup.json', key='download_backup_json')
  sheets={'produtos':pd.DataFrame(db['products']),'clientes':pd.DataFrame(db['clients']),'vendedores':pd.DataFrame(db['salespeople']),'pedidos':pd.DataFrame(db['orders'])}
