@@ -334,6 +334,32 @@ def css():
      gap:.35rem!important;
    }
  }
+ 
+ /* CORES DOS BOTÕES ESPECÍFICOS */
+ .st-key-btn_add_produto_pedido button{
+   background:#fb923c!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ div[class*="st-key-excluir_item_temp_"] button,
+ div[class*="st-key-del_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .st-key-nav_products button{
+   background:#bbf7d0!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ .st-key-nav_products button[kind="primary"]{
+   background:#86efac!important;
+   color:#111!important;
+ }
+
  </style>''', unsafe_allow_html=True)
 
 def header(db):
