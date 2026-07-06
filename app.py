@@ -84,7 +84,21 @@ def nav():
    max-width: 520px !important;
    margin: auto !important;
    gap: 4px !important;
+   display: flex !important;
+   flex-direction: row !important;
+   flex-wrap: nowrap !important;
+   align-items: center !important;
  }
+ .st-key-bottom_nav [data-testid="column"] {
+   width: 16.66% !important;
+   min-width: 0 !important;
+   flex: 1 1 0 !important;
+   padding: 0 !important;
+ }
+ .st-key-bottom_nav [data-testid="column"] > div {
+   width: 100% !important;
+ }
+ .st-key-bottom_nav .stButton {width: 100% !important;}
  .st-key-bottom_nav .stButton > button {
    width: 100% !important;
    min-height: 54px !important;
@@ -94,11 +108,33 @@ def nav():
    color: #eee !important;
    font-size: 11px !important;
    font-weight: 900 !important;
-   padding: 4px 2px !important;
+   padding: 4px 1px !important;
+   line-height: 1.15 !important;
+   white-space: pre-line !important;
  }
  .st-key-bottom_nav .stButton > button[kind="primary"] {
    background: #f97316 !important;
    color: #111 !important;
+ }
+ @media (max-width: 640px) {
+   .block-container { padding-bottom: 92px !important; }
+   .st-key-bottom_nav { padding: 6px 4px 10px 4px !important; }
+   .st-key-bottom_nav [data-testid="stHorizontalBlock"] {
+     display: flex !important;
+     flex-direction: row !important;
+     flex-wrap: nowrap !important;
+     gap: 2px !important;
+   }
+   .st-key-bottom_nav [data-testid="column"] {
+     width: 16.66% !important;
+     flex: 1 1 0 !important;
+     min-width: 0 !important;
+   }
+   .st-key-bottom_nav .stButton > button {
+     min-height: 50px !important;
+     font-size: 10px !important;
+     border-radius: 16px !important;
+   }
  }
  </style>
  ''', unsafe_allow_html=True)
