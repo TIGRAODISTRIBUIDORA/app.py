@@ -3,6 +3,7 @@ from datetime import datetime
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+import requests
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
 
@@ -112,6 +113,41 @@ def campos_produto(p):
 
 def cliente_por_id(db, client_id):
  return next((c for c in db.get('clients',[]) if c.get('id')==client_id), {})
+
+def buscar_cnpj_internet(cnpj):
+ cnpj_limpo=so_numeros(cnpj)
+ if len(cnpj_limpo)!=14:
+  return None, 'CNPJ inválido. Digite 14 números.'
+
+ try:
+  url=f'https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}'
+  r=requests.get(url, timeout=10)
+
+  if r.status_code!=200:
+   return None, 'CNPJ não encontrado ou serviço indisponível.'
+
+  d=r.json()
+
+  telefone=''
+  if d.get('ddd_telefone_1'):
+   telefone=d.get('ddd_telefone_1')
+  elif d.get('telefone'):
+   telefone=d.get('telefone')
+
+  dados={
+   'document':cnpj_limpo,
+   'name':d.get('nome_fantasia') or d.get('razao_social') or '',
+   'email':d.get('email') or '',
+   'phone':telefone,
+   'city':d.get('municipio') or '',
+   'state':d.get('uf') or ''
+  }
+
+  return dados, None
+
+ except Exception as e:
+  return None, 'Erro ao buscar CNPJ. Verifique a internet e tente novamente.'
+
 
 def css():
  st.markdown('''<style>
@@ -525,33 +561,53 @@ def orders_page(db):
 
 def clients_page(db):
  st.subheader('👥 Clientes')
+
  with st.expander('Cadastrar cliente'):
+  st.markdown('#### Buscar dados pelo CNPJ')
+  cnpj_busca=st.text_input('CNPJ', key='cliente_cnpj_busca', placeholder='Digite o CNPJ para buscar automaticamente')
+
+  if st.button('Buscar dados do CNPJ', key='btn_buscar_cnpj_cliente'):
+   dados, erro=buscar_cnpj_internet(cnpj_busca)
+
+   if erro:
+    st.error(erro)
+   else:
+    st.session_state['cliente_doc']=dados.get('document','')
+    st.session_state['cliente_nome']=dados.get('name','')
+    st.session_state['cliente_email']=dados.get('email','')
+    st.session_state['cliente_tel']=dados.get('phone','')
+    st.session_state['cliente_cidade']=dados.get('city','')
+    st.session_state['cliente_estado']=dados.get('state','')
+    st.success('Dados encontrados. Confira e clique em Salvar cliente.')
+
   with st.form('cli'):
    codigo=st.text_input('Código do cliente', key='cliente_codigo')
-   n=st.text_input('Nome', key='cliente_nome')
-   doc=st.text_input('CPF/CNPJ', key='cliente_doc')
+   n=st.text_input('Nome / Razão social', key='cliente_nome')
+   doc=st.text_input('CNPJ/CPF', key='cliente_doc')
    em=st.text_input('E-mail', key='cliente_email')
    ph=st.text_input('Telefone', key='cliente_tel')
    city=st.text_input('Cidade', key='cliente_cidade')
    uf=st.text_input('Estado', key='cliente_estado')
+
    if st.form_submit_button('Salvar cliente') and n:
-    db['clients'].insert(0,{'id':uid('cli'),'code':codigo,'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf})
+    db['clients'].insert(0,{
+     'id':uid('cli'),
+     'code':codigo,
+     'name':n,
+     'document':doc,
+     'email':em,
+     'phone':ph,
+     'city':city,
+     'state':uf
+    })
     save_db(db)
     st.rerun()
 
  busca=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='busca_clientes')
+ encontrados=[c for c in db['clients'] if combina_inicio(campos_cliente(c), busca)] if busca else db['clients']
 
- if busca:
-  encontrados=[]
-  for c in db['clients']:
-   if combina_inicio(campos_cliente(c), busca):
-    encontrados.append(c)
-  if encontrados:
-   st.caption('Sugestões encontradas')
-  else:
-   st.warning('Nenhum cliente encontrado.')
- else:
-  encontrados=db['clients']
+ if busca and not encontrados:
+  st.warning('Nenhum cliente encontrado.')
 
  for c in encontrados:
   cod=codigo_cliente(c)
