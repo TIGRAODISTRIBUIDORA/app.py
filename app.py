@@ -58,6 +58,8 @@ def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 def status_card_style(status):
  status=str(status or '').lower()
+ if 'pendente' in status:
+  return 'background:#fef3c7;border:1px solid #fde68a;color:#92400e;'
  if 'faturado' in status:
   return 'background:#dbeafe;border:1px solid #93c5fd;color:#1e3a8a;'
  if 'entregue' in status:
