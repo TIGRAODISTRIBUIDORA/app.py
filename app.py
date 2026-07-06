@@ -55,6 +55,42 @@ def save_db(db):
 def money(v): return f"R$ {float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X','.')
 def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
+def normalizar(txt):
+ txt=str(txt or '').lower().strip()
+ troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','ê':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
+ for a,b in troca.items():
+  txt=txt.replace(a,b)
+ return txt
+
+def comeca_com(texto, busca):
+ busca=normalizar(busca)
+ texto=normalizar(texto)
+ if not busca:
+  return True
+ partes=texto.replace('-',' ').replace('/',' ').replace('.',' ').replace(',',' ').split()
+ return any(p.startswith(busca) for p in partes)
+
+def combina_inicio(campos, busca):
+ busca=normalizar(busca)
+ if not busca:
+  return True
+ for campo in campos:
+  if comeca_com(campo, busca):
+   return True
+ return False
+
+def sugestoes_inicio(lista, campos, busca, limite=8):
+ busca=normalizar(busca)
+ if not busca:
+  return []
+ achados=[]
+ for item in lista:
+  textos=[str(item.get(c,'')) for c in campos]
+  if combina_inicio(textos, busca):
+   achados.append(item)
+ return achados[:limite]
+
+
 def css():
  st.markdown('''<style>
  header, footer, [data-testid="stSidebar"] {display:none!important}
@@ -345,33 +381,65 @@ def dashboard(db):
 def new_order(db):
  st.subheader('➕ Novo Pedido')
  clients=db['clients']; products=db['products']; sales=db['salespeople']
+
  with st.form('order_form'):
-  c=st.selectbox('Cliente', clients, format_func=lambda x:f"{x['name']} — {x['document']}", key='pedido_cliente')
-  if st.session_state.role=='admin': s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
-  else: s=next(x for x in sales if x['id']==st.session_state.sales_id)
+  busca_cliente=st.text_input('Pesquisar cliente', key='pedido_busca_cliente', placeholder='Digite as primeiras letras do cliente')
+  clientes_filtrados=sugestoes_inicio(clients, ['name','document','city','phone'], busca_cliente, limite=20) if busca_cliente else clients[:20]
+  if not clientes_filtrados:
+   clientes_filtrados=clients[:1]
+   st.warning('Nenhum cliente encontrado. Cadastre o cliente ou ajuste a pesquisa.')
+
+  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:f"{x['name']} — {x['document']}", key='pedido_cliente')
+
+  if st.session_state.role=='admin':
+   s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
+  else:
+   s=next(x for x in sales if x['id']==st.session_state.sales_id)
+
   st.write('Produtos')
   items=[]
+
   for i in range(1,7):
+   busca_prod=st.text_input(f'Pesquisar produto {i}', key=f'busca_p{i}', placeholder='Digite código, nome, fornecedor ou categoria')
+   produtos_filtrados=sugestoes_inicio(products, ['sku','name','supplier','category'], busca_prod, limite=20) if busca_prod else products[:20]
+
+   if not produtos_filtrados:
+    st.warning(f'Produto {i}: nenhuma sugestão encontrada.')
+    produtos_filtrados=[]
+
    col1,col2=st.columns([3,1])
-   p=col1.selectbox(f'Produto {i}', [None]+products, format_func=lambda x:'Selecione' if x is None else f"{x['sku']} - {x['name']} ({money(x['price'])})", key=f'p{i}')
+   p=col1.selectbox(
+    f'Produto {i}',
+    [None]+produtos_filtrados,
+    format_func=lambda x:'Selecione' if x is None else f"{x['sku']} - {x['name']} ({money(x['price'])})",
+    key=f'p{i}'
+   )
    q=col2.number_input('Qtd', min_value=0, step=1, key=f'q{i}')
-   if p and q>0: items.append({'productId':p['id'],'productName':p['name'],'quantity':int(q),'price':float(p['price']),'commissionRate':p.get('commissionRate',db['commissionRate'])})
+
+   if p and q>0:
+    items.append({'productId':p['id'],'productName':p['name'],'quantity':int(q),'price':float(p['price']),'commissionRate':p.get('commissionRate',db['commissionRate'])})
+
   salvar=st.form_submit_button('Salvar pedido')
+
  if salvar:
-  if not items: st.error('Adicione pelo menos 1 produto')
+  if not items:
+   st.error('Adicione pelo menos 1 produto')
   else:
    total=sum(it['quantity']*it['price'] for it in items); rate=float(db['commissionRate']); maxnum=max([o['orderNumber'] for o in db['orders']], default=-1)+1
    db['orders'].insert(0,{'id':uid('ord'),'orderNumber':maxnum,'date':datetime.now().isoformat(timespec='seconds'),'salespersonId':s['id'],'salespersonName':s['name'],'clientId':c['id'],'clientName':c['name'],'items':items,'total':total,'commissionRate':rate,'commissionAmount':round(total*rate/100,2),'status':'Pendente'})
    for it in items:
     for p in db['products']:
-     if p['id']==it['productId']: p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
+     if p['id']==it['productId']:
+      p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
    save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
 
 def orders_page(db):
  st.subheader('📦 Pedidos')
- busca=st.text_input('Pesquisar pedido, cliente ou vendedor', key='busca_pedidos')
+ busca=st.text_input('Pesquisar pedido, cliente ou vendedor por início', key='busca_pedidos')
  for o in sorted(filtered_orders(db),key=lambda x:x['orderNumber'],reverse=True):
-  if busca and busca.lower() not in json.dumps(o,ensure_ascii=False).lower(): continue
+  campos=[o.get('orderNumber',''),o.get('clientName',''),o.get('salespersonName',''),o.get('status','')]
+  if busca and not combina_inicio(campos, busca):
+   continue
   with st.expander(f"#{o['orderNumber']} — {o['clientName']} — {money(o['total'])} — {o['status']}"):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
@@ -389,9 +457,19 @@ def clients_page(db):
    n=st.text_input('Nome', key='cliente_nome'); doc=st.text_input('CPF/CNPJ', key='cliente_doc'); em=st.text_input('E-mail', key='cliente_email'); ph=st.text_input('Telefone', key='cliente_tel'); city=st.text_input('Cidade', key='cliente_cidade'); uf=st.text_input('Estado', key='cliente_estado')
    if st.form_submit_button('Salvar cliente') and n:
     db['clients'].insert(0,{'id':uid('cli'),'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf}); save_db(db); st.rerun()
- busca=st.text_input('Pesquisar por nome, documento, cidade ou iniciais', key='busca_clientes')
- for c in db['clients']:
-  if busca and busca.lower() not in json.dumps(c,ensure_ascii=False).lower(): continue
+
+ busca=st.text_input('Pesquisar cliente por iniciais, nome, documento ou cidade', key='busca_clientes')
+
+ if busca:
+  encontrados=sugestoes_inicio(db['clients'], ['name','document','city','state','phone'], busca, limite=50)
+  if encontrados:
+   st.caption('Sugestões encontradas')
+  else:
+   st.warning('Nenhum cliente encontrado com esse início.')
+ else:
+  encontrados=db['clients']
+
+ for c in encontrados:
   st.markdown(f'<div class="card"><b>{c["name"]}</b><br>{c["document"]}<br>{c["phone"]} • {c["city"]}/{c["state"]}</div>', unsafe_allow_html=True)
 
 def products_page(db):
@@ -416,17 +494,27 @@ def products_page(db):
  fornecedores = sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
  fornecedor_filtro = st.selectbox('Filtrar por fornecedor', ['Todos'] + fornecedores, key='filtro_fornecedor_produtos')
 
- busca=st.text_input('Pesquisar produto por código, nome, categoria ou fornecedor', key='busca_produtos')
+ busca=st.text_input('Pesquisar produto por iniciais, código, nome, categoria ou fornecedor', key='busca_produtos')
 
+ produtos_filtrados=[]
  for p in db['products']:
   fornecedor_produto = p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
 
   if fornecedor_filtro != 'Todos' and fornecedor_produto != fornecedor_filtro:
    continue
 
-  if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower():
+  if busca and not combina_inicio([p.get('sku',''),p.get('name',''),p.get('category',''),fornecedor_produto], busca):
    continue
 
+  produtos_filtrados.append(p)
+
+ if busca and not produtos_filtrados:
+  st.warning('Nenhum produto encontrado com esse início.')
+ elif busca:
+  st.caption('Sugestões encontradas')
+
+ for p in produtos_filtrados:
+  fornecedor_produto = p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
   st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br>Fornecedor: {fornecedor_produto}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
 
 def more_page(db):
