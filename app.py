@@ -23,10 +23,10 @@ INITIAL_PRODUCTS=[
  {'id':'prod-8','name':'Whisky Johnnie Walker Red Label 1L','sku':'JWL-008','price':99.90,'stock':40,'category':'Destilados','supplier':'Diageo','commissionRate':4},
 ]
 INITIAL_CLIENTS=[
- {'id':'cli-1','name':'nelson das galaxie','document':'123.456.789-00','email':'nelson@galaxie.com','phone':'(11) 98888-7777','city':'São Paulo','state':'SP'},
- {'id':'cli-2','name':'Distribuidora Silva & Silva','document':'98.765.432/0001-11','email':'silva@distribuidora.com','phone':'(11) 3245-8899','city':'Campinas','state':'SP'},
- {'id':'cli-3','name':'Mercadinho do Bairro Ltda','document':'45.123.789/0001-44','email':'contato@mercadinhobairro.com','phone':'(21) 97777-6666','city':'Rio de Janeiro','state':'RJ'},
- {'id':'cli-4','name':'Adega Central','document':'55.666.777/0001-88','email':'adega.central@outlook.com','phone':'(19) 99122-3344','city':'Piracicaba','state':'SP'},
+ {'id':'cli-1','code':'001','name':'nelson das galaxie','document':'123.456.789-00','email':'nelson@galaxie.com','phone':'(11) 98888-7777','city':'São Paulo','state':'SP'},
+ {'id':'cli-2','code':'002','name':'Distribuidora Silva & Silva','document':'98.765.432/0001-11','email':'silva@distribuidora.com','phone':'(11) 3245-8899','city':'Campinas','state':'SP'},
+ {'id':'cli-3','code':'003','name':'Mercadinho do Bairro Ltda','document':'45.123.789/0001-44','email':'contato@mercadinhobairro.com','phone':'(21) 97777-6666','city':'Rio de Janeiro','state':'RJ'},
+ {'id':'cli-4','code':'004','name':'Adega Central','document':'55.666.777/0001-88','email':'adega.central@outlook.com','phone':'(19) 99122-3344','city':'Piracicaba','state':'SP'},
 ]
 INITIAL_SALES=[
  {'id':'sales-1','name':'Vendedor','email':'vendedor@tigrao.com','active':True,'cpf':'111.111.111-11','phone':'(11) 91111-1111','address':'Rua Principal, 100','password':'123','passwordIsTemporary':True},
@@ -57,17 +57,28 @@ def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 def normalizar(txt):
  txt=str(txt or '').lower().strip()
- troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','ê':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
+ troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
  for a,b in troca.items():
   txt=txt.replace(a,b)
  return txt
+
+def so_numeros(txt):
+ return ''.join(ch for ch in str(txt or '') if ch.isdigit())
 
 def comeca_com(texto, busca):
  busca=normalizar(busca)
  texto=normalizar(texto)
  if not busca:
   return True
- partes=texto.replace('-',' ').replace('/',' ').replace('.',' ').replace(',',' ').split()
+
+ busca_num=so_numeros(busca)
+ texto_num=so_numeros(texto)
+
+ # Para código, pedido, CPF/CNPJ e telefone, aceita início ou trecho numérico.
+ if busca_num and busca_num in texto_num:
+  return True
+
+ partes=texto.replace('-',' ').replace('/',' ').replace('.',' ').replace(',',' ').replace('&',' ').split()
  return any(p.startswith(busca) for p in partes)
 
 def combina_inicio(campos, busca):
@@ -90,6 +101,17 @@ def sugestoes_inicio(lista, campos, busca, limite=8):
    achados.append(item)
  return achados[:limite]
 
+def codigo_cliente(c):
+ return c.get('code') or c.get('codigo') or c.get('id','').replace('cli-','')
+
+def campos_cliente(c):
+ return [codigo_cliente(c), c.get('name',''), c.get('document','')]
+
+def campos_produto(p):
+ return [p.get('sku',''), p.get('code',''), p.get('barcode',''), p.get('name','')]
+
+def cliente_por_id(db, client_id):
+ return next((c for c in db.get('clients',[]) if c.get('id')==client_id), {})
 
 def css():
  st.markdown('''<style>
@@ -383,13 +405,17 @@ def new_order(db):
  clients=db['clients']; products=db['products']; sales=db['salespeople']
 
  with st.form('order_form'):
-  busca_cliente=st.text_input('Pesquisar cliente', key='pedido_busca_cliente', placeholder='Digite as primeiras letras do cliente')
-  clientes_filtrados=sugestoes_inicio(clients, ['name','document','city','phone'], busca_cliente, limite=20) if busca_cliente else clients[:20]
+  busca_cliente=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='pedido_busca_cliente')
+  if busca_cliente:
+   clientes_filtrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)]
+  else:
+   clientes_filtrados=clients[:20]
+
   if not clientes_filtrados:
    clientes_filtrados=clients[:1]
    st.warning('Nenhum cliente encontrado. Cadastre o cliente ou ajuste a pesquisa.')
 
-  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:f"{x['name']} — {x['document']}", key='pedido_cliente')
+  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:f"{codigo_cliente(x)} — {x['name']} — {x['document']}", key='pedido_cliente')
 
   if st.session_state.role=='admin':
    s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
@@ -400,8 +426,11 @@ def new_order(db):
   items=[]
 
   for i in range(1,7):
-   busca_prod=st.text_input(f'Pesquisar produto {i}', key=f'busca_p{i}', placeholder='Digite código, nome, fornecedor ou categoria')
-   produtos_filtrados=sugestoes_inicio(products, ['sku','name','supplier','category'], busca_prod, limite=20) if busca_prod else products[:20]
+   busca_prod=st.text_input(f'Pesquisar produto {i} por nome ou código', key=f'busca_p{i}')
+   if busca_prod:
+    produtos_filtrados=[p for p in products if combina_inicio(campos_produto(p), busca_prod)][:20]
+   else:
+    produtos_filtrados=products[:20]
 
    if not produtos_filtrados:
     st.warning(f'Produto {i}: nenhuma sugestão encontrada.')
@@ -435,13 +464,16 @@ def new_order(db):
 
 def orders_page(db):
  st.subheader('📦 Pedidos')
- busca=st.text_input('Pesquisar pedido, cliente ou vendedor por início', key='busca_pedidos')
+ busca=st.text_input('Pesquisar pedido por número, cliente, código ou CNPJ/CPF', key='busca_pedidos')
  for o in sorted(filtered_orders(db),key=lambda x:x['orderNumber'],reverse=True):
-  campos=[o.get('orderNumber',''),o.get('clientName',''),o.get('salespersonName',''),o.get('status','')]
+  cli=cliente_por_id(db, o.get('clientId',''))
+  campos=[o.get('orderNumber',''),o.get('clientName',''),codigo_cliente(cli),cli.get('document','')]
   if busca and not combina_inicio(campos, busca):
    continue
   with st.expander(f"#{o['orderNumber']} — {o['clientName']} — {money(o['total'])} — {o['status']}"):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
+   if cli:
+    st.write('Cliente:', f"{codigo_cliente(cli)} — {cli.get('document','')}")
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
    st.write('Comissão:', money(o.get('commissionAmount',0)))
    if st.session_state.role=='admin':
@@ -454,23 +486,35 @@ def clients_page(db):
  st.subheader('👥 Clientes')
  with st.expander('Cadastrar cliente'):
   with st.form('cli'):
-   n=st.text_input('Nome', key='cliente_nome'); doc=st.text_input('CPF/CNPJ', key='cliente_doc'); em=st.text_input('E-mail', key='cliente_email'); ph=st.text_input('Telefone', key='cliente_tel'); city=st.text_input('Cidade', key='cliente_cidade'); uf=st.text_input('Estado', key='cliente_estado')
+   codigo=st.text_input('Código do cliente', key='cliente_codigo')
+   n=st.text_input('Nome', key='cliente_nome')
+   doc=st.text_input('CPF/CNPJ', key='cliente_doc')
+   em=st.text_input('E-mail', key='cliente_email')
+   ph=st.text_input('Telefone', key='cliente_tel')
+   city=st.text_input('Cidade', key='cliente_cidade')
+   uf=st.text_input('Estado', key='cliente_estado')
    if st.form_submit_button('Salvar cliente') and n:
-    db['clients'].insert(0,{'id':uid('cli'),'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf}); save_db(db); st.rerun()
+    db['clients'].insert(0,{'id':uid('cli'),'code':codigo,'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf})
+    save_db(db)
+    st.rerun()
 
- busca=st.text_input('Pesquisar cliente por iniciais, nome, documento ou cidade', key='busca_clientes')
+ busca=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='busca_clientes')
 
  if busca:
-  encontrados=sugestoes_inicio(db['clients'], ['name','document','city','state','phone'], busca, limite=50)
+  encontrados=[]
+  for c in db['clients']:
+   if combina_inicio(campos_cliente(c), busca):
+    encontrados.append(c)
   if encontrados:
    st.caption('Sugestões encontradas')
   else:
-   st.warning('Nenhum cliente encontrado com esse início.')
+   st.warning('Nenhum cliente encontrado.')
  else:
   encontrados=db['clients']
 
  for c in encontrados:
-  st.markdown(f'<div class="card"><b>{c["name"]}</b><br>{c["document"]}<br>{c["phone"]} • {c["city"]}/{c["state"]}</div>', unsafe_allow_html=True)
+  cod=codigo_cliente(c)
+  st.markdown(f'<div class="card"><b>{cod} — {c["name"]}</b><br>{c["document"]}<br>{c["phone"]} • {c["city"]}/{c["state"]}</div>', unsafe_allow_html=True)
 
 def products_page(db):
  st.subheader('🛒 Produtos')
@@ -494,7 +538,7 @@ def products_page(db):
  fornecedores = sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
  fornecedor_filtro = st.selectbox('Filtrar por fornecedor', ['Todos'] + fornecedores, key='filtro_fornecedor_produtos')
 
- busca=st.text_input('Pesquisar produto por iniciais, código, nome, categoria ou fornecedor', key='busca_produtos')
+ busca=st.text_input('Pesquisar produto por nome ou código', key='busca_produtos')
 
  produtos_filtrados=[]
  for p in db['products']:
@@ -503,13 +547,13 @@ def products_page(db):
   if fornecedor_filtro != 'Todos' and fornecedor_produto != fornecedor_filtro:
    continue
 
-  if busca and not combina_inicio([p.get('sku',''),p.get('name',''),p.get('category',''),fornecedor_produto], busca):
+  if busca and not combina_inicio(campos_produto(p), busca):
    continue
 
   produtos_filtrados.append(p)
 
  if busca and not produtos_filtrados:
-  st.warning('Nenhum produto encontrado com esse início.')
+  st.warning('Nenhum produto encontrado.')
  elif busca:
   st.caption('Sugestões encontradas')
 
