@@ -64,15 +64,52 @@ def header(db):
  st.markdown(f'''<div class="top"><div class="brand"><div class="logo">🐯</div><div><div class="sub">DISTRIBUIDORA</div><div class="title">{db.get('systemName','TIGRÃO')}</div><div style="color:#aaa;font-size:12px">{user}</div></div></div></div>''', unsafe_allow_html=True)
 
 def nav():
+ # IMPORTANTE: não usamos mais HTML <form> aqui.
+ # O <form> fazia a página recarregar no celular e o Streamlit perdia o login.
  tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
- html='<div class="nav">'
- for key,ico,label in tabs:
-  cls='on' if st.session_state.tab==key else ''
-  html += f'<form action="" method="get"><button class="{cls}" name="tab" value="{key}">{ico}<br>{label}</button></form>'
- html+='</div>'
- st.markdown(html, unsafe_allow_html=True)
- qp=st.query_params.get('tab')
- if qp in [t[0] for t in tabs]: st.session_state.tab=qp
+
+ st.markdown('''
+ <style>
+ .st-key-bottom_nav {
+   position: fixed !important;
+   left: 0 !important;
+   right: 0 !important;
+   bottom: 0 !important;
+   z-index: 999999 !important;
+   background: #111 !important;
+   padding: 8px 5px 12px 5px !important;
+   border-top: 1px solid #222 !important;
+ }
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"] {
+   max-width: 520px !important;
+   margin: auto !important;
+   gap: 4px !important;
+ }
+ .st-key-bottom_nav .stButton > button {
+   width: 100% !important;
+   min-height: 54px !important;
+   border: 0 !important;
+   border-radius: 18px !important;
+   background: #111 !important;
+   color: #eee !important;
+   font-size: 11px !important;
+   font-weight: 900 !important;
+   padding: 4px 2px !important;
+ }
+ .st-key-bottom_nav .stButton > button[kind="primary"] {
+   background: #f97316 !important;
+   color: #111 !important;
+ }
+ </style>
+ ''', unsafe_allow_html=True)
+
+ with st.container(key='bottom_nav'):
+  cols=st.columns(6)
+  for col,(key,ico,label) in zip(cols,tabs):
+   active = st.session_state.get('tab','dashboard') == key
+   if col.button(f'{ico}\n{label}', key=f'nav_{key}', type='primary' if active else 'secondary'):
+    st.session_state.tab=key
+    st.rerun()
 
 def login(db):
  st.markdown('<div style="height:40px"></div><div class="card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
