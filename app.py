@@ -58,12 +58,10 @@ def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 def status_card_style(status):
  status=str(status or '').lower()
- if 'pendente' in status:
-  return 'background:#fee2e2;border:1px solid #fecaca;color:#7f1d1d;'
  if 'faturado' in status:
-  return 'background:#14532d;border:1px solid #166534;color:#ffffff;'
- if 'inconsist' in status or 'incosit' in status:
-  return 'background:#fef3c7;border:1px solid #fde68a;color:#78350f;'
+  return 'background:#dbeafe;border:1px solid #93c5fd;color:#1e3a8a;'
+ if 'entregue' in status:
+  return 'background:#dcfce7;border:1px solid #86efac;color:#166534;'
  return 'background:white;border:1px solid #eee;color:#171717;'
 
 
