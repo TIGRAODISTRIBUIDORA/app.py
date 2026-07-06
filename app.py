@@ -503,6 +503,10 @@ def new_order(db):
  else:
   s=next(x for x in sales if x['id']==st.session_state.sales_id)
 
+ col_desc,col_prazo=st.columns([1,2])
+ desconto=col_desc.text_input('Desconto', key='pedido_desconto', placeholder='Ex: 5%')
+ prazo_pagamento=col_prazo.text_input('Prazo de pagamento', key='pedido_prazo_pagamento', placeholder='Ex: 7 dias')
+
  st.markdown('### Produto')
  busca_prod=st.text_input('Pesquisar produto por nome ou código', key='pedido_busca_produto')
  produtos_filtrados=[p for p in products if combina_inicio(campos_produto(p), busca_prod)][:20] if busca_prod else []
@@ -564,6 +568,8 @@ def new_order(db):
     'clientName':c['name'],
     'items':items,
     'total':total,
+    'discount':desconto,
+    'paymentTerm':prazo_pagamento,
     'commissionRate':rate,
     'commissionAmount':round(total*rate/100,2),
     'status':'Pendente'
@@ -597,6 +603,8 @@ def orders_page(db):
    if cli:
     st.write('Cliente:', f"{codigo_cliente(cli)} — {cli.get('document','')}")
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
+   st.write('Desconto:', o.get('discount',''))
+   st.write('Prazo de pagamento:', o.get('paymentTerm',''))
    st.write('Comissão:', money(o.get('commissionAmount',0)))
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
