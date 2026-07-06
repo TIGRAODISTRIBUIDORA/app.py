@@ -504,8 +504,10 @@ def login(db):
  st.info('Admin: admin / admin123   |   Vendedor: vendedor@tigrao.com / 123')
 
 def filtered_orders(db):
- orders=db['orders']
- if st.session_state.role=='vendedor': orders=[o for o in orders if o['salespersonId']==st.session_state.sales_id]
+ orders=db.get('orders',[])
+ if st.session_state.get('role')=='vendedor':
+  sid=st.session_state.get('sales_id','')
+  orders=[o for o in orders if o.get('salespersonId')==sid]
  return orders
 
 def dashboard(db):
@@ -651,6 +653,8 @@ def orders_page(db):
    st.write('Desconto:', o.get('discount',''))
    st.write('Prazo de pagamento:', o.get('paymentTerm',''))
    st.write('Comissão:', money(o.get('commissionAmount',0)))
+   if st.session_state.get('role')!='admin':
+    st.caption('Você está visualizando apenas os seus pedidos.')
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
@@ -860,7 +864,9 @@ def products_page(db):
 def more_page(db):
  st.subheader('☰ Mais')
  if st.button('Sair', key='btn_sair'): st.session_state.clear(); st.rerun()
- if st.session_state.role!='admin': return
+ if st.session_state.role!='admin':
+  st.info('Área administrativa disponível somente para o administrador.')
+  return
 
  st.markdown('### Vendedores')
  with st.expander('Cadastrar vendedor'):
