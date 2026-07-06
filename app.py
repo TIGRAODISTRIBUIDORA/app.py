@@ -404,63 +404,104 @@ def new_order(db):
  st.subheader('➕ Novo Pedido')
  clients=db['clients']; products=db['products']; sales=db['salespeople']
 
- with st.form('order_form'):
-  busca_cliente=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='pedido_busca_cliente')
-  if busca_cliente:
-   clientes_filtrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)]
-  else:
-   clientes_filtrados=clients[:20]
+ if 'pedido_itens_temp' not in st.session_state:
+  st.session_state.pedido_itens_temp=[]
 
-  if not clientes_filtrados:
-   clientes_filtrados=clients[:1]
-   st.warning('Nenhum cliente encontrado. Cadastre o cliente ou ajuste a pesquisa.')
+ st.markdown('### Cliente')
+ busca_cliente=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='pedido_busca_cliente')
+ clientes_filtrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)] if busca_cliente else clients[:20]
 
-  c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:x['name'], key='pedido_cliente')
+ if not clientes_filtrados:
+  st.warning('Nenhum cliente encontrado.')
+  clientes_filtrados=clients[:1]
 
-  if st.session_state.role=='admin':
-   s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
-  else:
-   s=next(x for x in sales if x['id']==st.session_state.sales_id)
+ c=st.selectbox('Cliente', clientes_filtrados, format_func=lambda x:x['name'], key='pedido_cliente')
 
-  st.write('Produtos')
-  items=[]
+ if st.session_state.role=='admin':
+  s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
+ else:
+  s=next(x for x in sales if x['id']==st.session_state.sales_id)
 
-  for i in range(1,7):
-   busca_prod=st.text_input(f'Pesquisar produto {i} por nome ou código', key=f'busca_p{i}')
-   if busca_prod:
-    produtos_filtrados=[p for p in products if combina_inicio(campos_produto(p), busca_prod)][:20]
-   else:
-    produtos_filtrados=products[:20]
+ st.markdown('### Produto')
+ busca_prod=st.text_input('Pesquisar produto por nome ou código', key='pedido_busca_produto')
+ produtos_filtrados=[p for p in products if combina_inicio(campos_produto(p), busca_prod)][:20] if busca_prod else []
 
-   if not produtos_filtrados:
-    st.warning(f'Produto {i}: nenhuma sugestão encontrada.')
-    produtos_filtrados=[]
+ if busca_prod and not produtos_filtrados:
+  st.warning('Nenhum produto encontrado.')
 
-   col1,col2=st.columns([3,1])
-   p=col1.selectbox(
-    f'Produto {i}',
-    [None]+produtos_filtrados,
-    format_func=lambda x:'Selecione' if x is None else f"{x['sku']} - {x['name']} ({money(x['price'])})",
-    key=f'p{i}'
-   )
-   q=col2.number_input('Qtd', min_value=0, step=1, key=f'q{i}')
+ if produtos_filtrados:
+  p=st.selectbox('Produto encontrado', produtos_filtrados, format_func=lambda x:x['name'], key='pedido_produto_unico')
+  colq,colb=st.columns([1,2])
+  qtd=colq.number_input('Qtd', min_value=1, step=1, key='pedido_qtd_unica')
+  if colb.button('Adicionar ao pedido', key='btn_add_produto_pedido'):
+   item={
+    'productId':p['id'],
+    'productName':p['name'],
+    'quantity':int(qtd),
+    'price':float(p['price']),
+    'commissionRate':p.get('commissionRate',db['commissionRate'])
+   }
+   st.session_state.pedido_itens_temp.append(item)
+   st.rerun()
 
-   if p and q>0:
-    items.append({'productId':p['id'],'productName':p['name'],'quantity':int(q),'price':float(p['price']),'commissionRate':p.get('commissionRate',db['commissionRate'])})
+ st.markdown('### Itens do pedido')
 
-  salvar=st.form_submit_button('Salvar pedido')
+ if not st.session_state.pedido_itens_temp:
+  st.info('Nenhum produto adicionado ainda.')
+ else:
+  total_temp=sum(it['quantity']*it['price'] for it in st.session_state.pedido_itens_temp)
 
- if salvar:
+  for idx,it in enumerate(st.session_state.pedido_itens_temp):
+   subtotal=it['quantity']*it['price']
+   col1,col2=st.columns([4,1])
+   col1.markdown(f'<div class="card"><b>{it["productName"]}</b><br>Qtd: {it["quantity"]} • Unitário: {money(it["price"])}<br><b>Subtotal: {money(subtotal)}</b></div>', unsafe_allow_html=True)
+   if col2.button('Excluir', key=f'excluir_item_temp_{idx}'):
+    st.session_state.pedido_itens_temp.pop(idx)
+    st.rerun()
+
+  st.markdown(f'<div class="metric">Total do pedido<br><b>{money(total_temp)}</b></div>', unsafe_allow_html=True)
+
+ col1,col2=st.columns(2)
+
+ if col1.button('Salvar pedido', key='btn_salvar_pedido_final'):
+  items=st.session_state.pedido_itens_temp
+
   if not items:
-   st.error('Adicione pelo menos 1 produto')
+   st.error('Adicione pelo menos 1 produto.')
   else:
-   total=sum(it['quantity']*it['price'] for it in items); rate=float(db['commissionRate']); maxnum=max([o['orderNumber'] for o in db['orders']], default=-1)+1
-   db['orders'].insert(0,{'id':uid('ord'),'orderNumber':maxnum,'date':datetime.now().isoformat(timespec='seconds'),'salespersonId':s['id'],'salespersonName':s['name'],'clientId':c['id'],'clientName':c['name'],'items':items,'total':total,'commissionRate':rate,'commissionAmount':round(total*rate/100,2),'status':'Pendente'})
+   total=sum(it['quantity']*it['price'] for it in items)
+   rate=float(db['commissionRate'])
+   maxnum=max([o['orderNumber'] for o in db['orders']], default=-1)+1
+
+   db['orders'].insert(0,{
+    'id':uid('ord'),
+    'orderNumber':maxnum,
+    'date':datetime.now().isoformat(timespec='seconds'),
+    'salespersonId':s['id'],
+    'salespersonName':s['name'],
+    'clientId':c['id'],
+    'clientName':c['name'],
+    'items':items,
+    'total':total,
+    'commissionRate':rate,
+    'commissionAmount':round(total*rate/100,2),
+    'status':'Pendente'
+   })
+
    for it in items:
-    for p in db['products']:
-     if p['id']==it['productId']:
-      p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
-   save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
+    for prod in db['products']:
+     if prod['id']==it['productId']:
+      prod['stock']=max(0,int(prod.get('stock',0))-it['quantity'])
+
+   save_db(db)
+   st.session_state.pedido_itens_temp=[]
+   st.success('Pedido salvo com sucesso')
+   st.session_state.tab='orders'
+   st.rerun()
+
+ if col2.button('Limpar pedido', key='btn_limpar_pedido_temp'):
+  st.session_state.pedido_itens_temp=[]
+  st.rerun()
 
 def orders_page(db):
  st.subheader('📦 Pedidos')
