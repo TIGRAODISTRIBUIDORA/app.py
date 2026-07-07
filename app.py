@@ -203,6 +203,23 @@ def products_page(db):
     sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
      db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
+
+  with st.expander('Importar cadastro de produtos por Excel'):
+   st.caption('Colunas aceitas: codigo/SKU, nome/produto, categoria, preco, estoque, comissao.')
+   modelo_prod=BytesIO()
+   with pd.ExcelWriter(modelo_prod, engine='openpyxl') as writer:
+    pd.DataFrame(columns=['codigo','nome','categoria','preco','estoque','comissao']).to_excel(writer,index=False,sheet_name='produtos')
+   st.download_button('Baixar modelo de produtos', data=modelo_prod.getvalue(), file_name='modelo_produtos_tigrao.xlsx', key='download_modelo_produtos_tela')
+   arquivo_prod=st.file_uploader('Escolher planilha de produtos', type=['xlsx'], key='upload_produtos_tela')
+   if arquivo_prod and st.button('Importar produtos agora', key='btn_importar_produtos_tela'):
+    try:
+     add,upd=importar_produtos_excel(db, arquivo_prod)
+     save_db(db)
+     st.success(f'Produtos importados: {add} novos e {upd} atualizados.')
+     st.rerun()
+    except Exception as e:
+     st.error(f'Erro ao importar produtos: {e}')
+
  busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
  for p in db['products']:
   if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
@@ -312,13 +329,13 @@ def more_page(db):
   pd.DataFrame(columns=['codigo','nome','categoria','preco','estoque','comissao']).to_excel(writer,index=False,sheet_name='produtos')
   pd.DataFrame(columns=['nome','cpf/cnpj','email','telefone','cidade','estado']).to_excel(writer,index=False,sheet_name='clientes')
  st.download_button('Baixar modelo Excel', data=modelo.getvalue(), file_name='modelo_importacao_tigrao.xlsx', key='download_modelo_importacao')
- up_prod=st.file_uploader('Importar produtos Excel', type=['xlsx','xls'], key='upload_produtos_excel')
+ up_prod=st.file_uploader('Importar produtos Excel', type=['xlsx'], key='upload_produtos_excel')
  if up_prod and st.button('Cadastrar produtos da planilha', key='btn_importar_produtos_excel'):
   try:
    add,upd=importar_produtos_excel(db, up_prod); save_db(db); st.success(f'Produtos importados: {add} novos e {upd} atualizados.'); st.rerun()
   except Exception as e:
    st.error(str(e))
- up_cli=st.file_uploader('Importar clientes Excel', type=['xlsx','xls'], key='upload_clientes_excel')
+ up_cli=st.file_uploader('Importar clientes Excel', type=['xlsx'], key='upload_clientes_excel')
  if up_cli and st.button('Cadastrar clientes da planilha', key='btn_importar_clientes_excel'):
   try:
    add,upd=importar_clientes_excel(db, up_cli); save_db(db); st.success(f'Clientes importados: {add} novos e {upd} atualizados.'); st.rerun()
