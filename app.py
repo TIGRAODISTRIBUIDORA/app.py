@@ -2,11 +2,6 @@ import json, os, uuid
 from datetime import datetime
 from io import BytesIO
 import pandas as pd
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 import streamlit as st
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
@@ -173,66 +168,6 @@ def new_order(db):
      if p['id']==it['productId']: p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
    save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
 
-
-
-def gerar_pdf_pedido(db, pedido):
-    buffer=BytesIO()
-    doc=SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.2*cm, leftMargin=1.2*cm, topMargin=1.2*cm, bottomMargin=1.2*cm)
-    styles=getSampleStyleSheet()
-    elems=[]
-
-    cliente=next((c for c in db.get('clients',[]) if c.get('id')==pedido.get('clientId')), {})
-
-    elems.append(Paragraph('<b>TIGRÃO DISTRIBUIDORA</b>', styles['Title']))
-    elems.append(Paragraph(f"Pedido #{pedido.get('orderNumber','')}", styles['Heading2']))
-    elems.append(Spacer(1, 8))
-
-    info=[
-        ['Cliente', pedido.get('clientName','')],
-        ['Documento', cliente.get('document','')],
-        ['Telefone', cliente.get('phone','')],
-        ['Cidade', f"{cliente.get('city','')} / {cliente.get('state','')}"],
-        ['Vendedor', pedido.get('salespersonName','')],
-        ['Data', str(pedido.get('date','')).replace('T',' ')],
-        ['Status', pedido.get('status','')],
-    ]
-    t=Table(info, colWidths=[3.2*cm, 13*cm])
-    t.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f3f4f6')),
-        ('TEXTCOLOR',(0,0),(0,-1),colors.HexColor('#111111')),
-        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
-        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
-        ('VALIGN',(0,0),(-1,-1),'TOP'),
-        ('PADDING',(0,0),(-1,-1),6),
-    ]))
-    elems.append(t)
-    elems.append(Spacer(1, 14))
-
-    dados=[['Produto','Qtd','Preço','Total']]
-    for it in pedido.get('items',[]):
-        qtd=float(it.get('quantity',0)); preco=float(it.get('price',0)); total=qtd*preco
-        dados.append([it.get('productName',''), str(int(qtd) if qtd.is_integer() else qtd), money(preco), money(total)])
-    dados.append(['','','TOTAL',money(pedido.get('total',0))])
-    tab=Table(dados, colWidths=[9.2*cm,2*cm,2.7*cm,2.7*cm])
-    tab.setStyle(TableStyle([
-        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#111111')),
-        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
-        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
-        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
-        ('ALIGN',(1,1),(-1,-1),'RIGHT'),
-        ('FONTNAME',(2,-1),(-1,-1),'Helvetica-Bold'),
-        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#fff7ed')),
-        ('PADDING',(0,0),(-1,-1),6),
-        ('VALIGN',(0,0),(-1,-1),'TOP'),
-    ]))
-    elems.append(tab)
-    elems.append(Spacer(1, 18))
-    elems.append(Paragraph('Obrigado pela preferência.', styles['Normal']))
-    elems.append(Paragraph('Este documento é uma cópia do pedido para conferência do cliente.', styles['Normal']))
-    doc.build(elems)
-    buffer.seek(0)
-    return buffer.getvalue()
-
 def orders_page(db):
  st.subheader('📦 Pedidos')
  busca=st.text_input('Pesquisar pedido, cliente ou vendedor', key='busca_pedidos')
@@ -242,8 +177,6 @@ def orders_page(db):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
    st.write('Comissão:', money(o.get('commissionAmount',0)))
-   pdf=gerar_pdf_pedido(db, o)
-   st.download_button('📄 Baixar/compartilhar PDF do pedido', data=pdf, file_name=f'pedido_{o["orderNumber"]}_tigrao.pdf', mime='application/pdf', key='pdf_'+o['id'])
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
@@ -275,87 +208,6 @@ def products_page(db):
   if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
   st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
 
-
-def _col(df, names):
-    lower={str(c).strip().lower():c for c in df.columns}
-    for name in names:
-        if name.lower() in lower:
-            return lower[name.lower()]
-    return None
-
-def _str(v):
-    if pd.isna(v): return ''
-    return str(v).strip()
-
-def _float(v, default=0.0):
-    try:
-        if pd.isna(v): return default
-        if isinstance(v, str): v=v.replace('R$','').replace('.','').replace(',','.').strip()
-        return float(v)
-    except Exception:
-        return default
-
-def _int(v, default=0):
-    try:
-        if pd.isna(v): return default
-        if isinstance(v, str): v=v.replace('.','').replace(',','.').strip()
-        return int(float(v))
-    except Exception:
-        return default
-
-def importar_produtos_excel(db, arquivo):
-    df=pd.read_excel(arquivo)
-    c_sku=_col(df,['sku','codigo','código','cod','referencia','referência'])
-    c_nome=_col(df,['nome','produto','descricao','descrição','name'])
-    c_cat=_col(df,['categoria','category','grupo','fornecedor'])
-    c_preco=_col(df,['preco','preço','valor','price','venda'])
-    c_estoque=_col(df,['estoque','stock','quantidade','qtd'])
-    c_com=_col(df,['comissao','comissão','commissionRate','comissao %','comissão %'])
-    if not c_nome:
-        raise ValueError('A planilha de produtos precisa ter uma coluna Nome ou Produto.')
-    existentes={_str(p.get('sku')).lower():p for p in db['products'] if _str(p.get('sku'))}
-    adicionados=0; atualizados=0
-    for _,r in df.iterrows():
-        nome=_str(r.get(c_nome))
-        if not nome: continue
-        sku=_str(r.get(c_sku)) if c_sku else ''
-        if not sku: sku=f'PROD-{len(db["products"])+adicionados+1}'
-        item={'id':uid('prod'),'name':nome,'sku':sku,'price':_float(r.get(c_preco),0),'stock':_int(r.get(c_estoque),0),'category':_str(r.get(c_cat)) if c_cat else '','commissionRate':_float(r.get(c_com),float(db.get('commissionRate',7)))}
-        k=sku.lower()
-        if k in existentes:
-            existentes[k].update({x:item[x] for x in ['name','sku','price','stock','category','commissionRate']})
-            atualizados+=1
-        else:
-            db['products'].insert(0,item); existentes[k]=item; adicionados+=1
-    return adicionados, atualizados
-
-def importar_clientes_excel(db, arquivo):
-    df=pd.read_excel(arquivo)
-    c_nome=_col(df,['nome','cliente','razao social','razão social','name'])
-    c_doc=_col(df,['cpf/cnpj','cnpj','cpf','documento','document'])
-    c_email=_col(df,['email','e-mail'])
-    c_tel=_col(df,['telefone','celular','phone','tel'])
-    c_city=_col(df,['cidade','city','municipio','município'])
-    c_uf=_col(df,['estado','uf','state'])
-    if not c_nome:
-        raise ValueError('A planilha de clientes precisa ter uma coluna Nome ou Cliente.')
-    existentes={_str(c.get('document')).lower():c for c in db['clients'] if _str(c.get('document'))}
-    adicionados=0; atualizados=0
-    for _,r in df.iterrows():
-        nome=_str(r.get(c_nome))
-        if not nome: continue
-        doc=_str(r.get(c_doc)) if c_doc else ''
-        item={'id':uid('cli'),'name':nome,'document':doc,'email':_str(r.get(c_email)) if c_email else '', 'phone':_str(r.get(c_tel)) if c_tel else '', 'city':_str(r.get(c_city)) if c_city else '', 'state':_str(r.get(c_uf)) if c_uf else ''}
-        k=doc.lower()
-        if k and k in existentes:
-            existentes[k].update({x:item[x] for x in ['name','document','email','phone','city','state']})
-            atualizados+=1
-        else:
-            db['clients'].insert(0,item)
-            if k: existentes[k]=item
-            adicionados+=1
-    return adicionados, atualizados
-
 def more_page(db):
  st.subheader('☰ Mais')
  if st.button('Sair', key='btn_sair'): st.session_state.clear(); st.rerun()
@@ -372,25 +224,6 @@ def more_page(db):
  st.markdown('### Comissão')
  rate=st.number_input('Comissão geral %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='comissao_geral')
  if st.button('Salvar comissão', key='btn_salvar_comissao'): db['commissionRate']=rate; save_db(db); st.success('Salvo')
- st.markdown('### Importar por Excel')
- st.caption('Produtos: use colunas Código/SKU, Nome/Produto, Categoria, Preço, Estoque, Comissão. Clientes: Nome/Cliente, CPF/CNPJ, Telefone, Cidade, Estado, Email.')
- modelo=BytesIO()
- with pd.ExcelWriter(modelo,engine='openpyxl') as writer:
-  pd.DataFrame(columns=['codigo','nome','categoria','preco','estoque','comissao']).to_excel(writer,index=False,sheet_name='produtos')
-  pd.DataFrame(columns=['nome','cpf/cnpj','email','telefone','cidade','estado']).to_excel(writer,index=False,sheet_name='clientes')
- st.download_button('Baixar modelo Excel', data=modelo.getvalue(), file_name='modelo_importacao_tigrao.xlsx', key='download_modelo_importacao')
- up_prod=st.file_uploader('Importar produtos Excel', type=['xlsx','xls'], key='upload_produtos_excel')
- if up_prod and st.button('Cadastrar produtos da planilha', key='btn_importar_produtos_excel'):
-  try:
-   add,upd=importar_produtos_excel(db, up_prod); save_db(db); st.success(f'Produtos importados: {add} novos e {upd} atualizados.'); st.rerun()
-  except Exception as e:
-   st.error(str(e))
- up_cli=st.file_uploader('Importar clientes Excel', type=['xlsx','xls'], key='upload_clientes_excel')
- if up_cli and st.button('Cadastrar clientes da planilha', key='btn_importar_clientes_excel'):
-  try:
-   add,upd=importar_clientes_excel(db, up_cli); save_db(db); st.success(f'Clientes importados: {add} novos e {upd} atualizados.'); st.rerun()
-  except Exception as e:
-   st.error(str(e))
  st.markdown('### Backup / Importação')
  st.download_button('Baixar backup JSON', data=json.dumps(db,ensure_ascii=False,indent=2).encode('utf-8'), file_name='tigrao_backup.json', key='download_backup_json')
  sheets={'produtos':pd.DataFrame(db['products']),'clientes':pd.DataFrame(db['clients']),'vendedores':pd.DataFrame(db['salespeople']),'pedidos':pd.DataFrame(db['orders'])}
