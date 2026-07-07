@@ -55,6 +55,103 @@ def save_db(db):
 def money(v): return f"R$ {float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X','.')
 def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
+def normalizar_colunas(df):
+    df = df.copy()
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    return df
+
+def valor_texto(v):
+    if pd.isna(v): return ''
+    return str(v).strip()
+
+def valor_numero(v, padrao=0.0):
+    try:
+        if pd.isna(v): return padrao
+        if isinstance(v, str):
+            v = v.replace('R$', '').replace('.', '').replace(',', '.').strip()
+        return float(v)
+    except Exception:
+        return padrao
+
+def valor_inteiro(v, padrao=0):
+    try:
+        if pd.isna(v): return padrao
+        if isinstance(v, str):
+            v = v.replace('.', '').replace(',', '.').strip()
+        return int(float(v))
+    except Exception:
+        return padrao
+
+def buscar_coluna(df, opcoes):
+    for nome in opcoes:
+        if nome in df.columns:
+            return nome
+    return None
+
+def importar_produtos_excel(db, arquivo):
+    df = pd.read_excel(arquivo)
+    df = normalizar_colunas(df)
+
+    col_codigo = buscar_coluna(df, ['codigo','código','sku','cod','referencia','referência'])
+    col_nome = buscar_coluna(df, ['nome','produto','descricao','descrição'])
+    col_categoria = buscar_coluna(df, ['categoria','grupo','fornecedor'])
+    col_preco = buscar_coluna(df, ['preco','preço','valor','price','venda'])
+    col_estoque = buscar_coluna(df, ['estoque','stock','quantidade','qtd'])
+    col_comissao = buscar_coluna(df, ['comissao','comissão','commissionrate','comissao %','comissão %'])
+
+    if not col_nome:
+        raise ValueError('A planilha precisa ter uma coluna chamada Nome, Produto ou Descrição.')
+
+    existentes = {valor_texto(p.get('sku')).lower(): p for p in db['products'] if valor_texto(p.get('sku'))}
+    adicionados = 0
+    atualizados = 0
+
+    for _, row in df.iterrows():
+        nome = valor_texto(row.get(col_nome))
+        if not nome:
+            continue
+
+        codigo = valor_texto(row.get(col_codigo)) if col_codigo else ''
+        if not codigo:
+            codigo = f'PROD-{len(db["products"]) + adicionados + 1}'
+
+        novo_produto = {
+            'id': uid('prod'),
+            'name': nome,
+            'sku': codigo,
+            'price': valor_numero(row.get(col_preco), 0.0) if col_preco else 0.0,
+            'stock': valor_inteiro(row.get(col_estoque), 0) if col_estoque else 0,
+            'category': valor_texto(row.get(col_categoria)) if col_categoria else '',
+            'commissionRate': valor_numero(row.get(col_comissao), float(db.get('commissionRate', 7))) if col_comissao else float(db.get('commissionRate', 7)),
+        }
+
+        chave = codigo.lower()
+        if chave in existentes:
+            existentes[chave].update({
+                'name': novo_produto['name'],
+                'sku': novo_produto['sku'],
+                'price': novo_produto['price'],
+                'stock': novo_produto['stock'],
+                'category': novo_produto['category'],
+                'commissionRate': novo_produto['commissionRate'],
+            })
+            atualizados += 1
+        else:
+            db['products'].insert(0, novo_produto)
+            existentes[chave] = novo_produto
+            adicionados += 1
+
+    return adicionados, atualizados
+
+def gerar_modelo_produtos_excel():
+    out = BytesIO()
+    modelo = pd.DataFrame([
+        {'codigo':'ABC-001','nome':'Produto exemplo','categoria':'Categoria exemplo','preco':10.50,'estoque':100,'comissao':7}
+    ])
+    with pd.ExcelWriter(out, engine='openpyxl') as writer:
+        modelo.to_excel(writer, index=False, sheet_name='produtos')
+    return out.getvalue()
+
 def css():
  st.markdown('''<style>
  header, footer, [data-testid="stSidebar"] {display:none!important}.block-container{max-width:520px!important;padding:14px 14px 98px!important}.stApp{background:#fafafa;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#111;color:#fff;border-radius:0 0 28px 28px;padding:22px;margin:-14px -14px 16px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:12px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:24px;padding:16px}.metric b{font-size:24px}.pill{border-radius:999px;padding:6px 10px;background:#fff7ed;color:#ea580c;font-weight:900;font-size:11px}.nav{position:fixed;bottom:0;left:0;right:0;background:#111;z-index:999;padding:8px 5px 12px;display:flex;justify-content:center;gap:4px}.nav button{min-width:64px;border:0;background:#111;color:#eee;border-radius:18px;padding:8px 6px;font-size:11px;font-weight:800}.nav .on{background:#f97316;color:#111}.status{font-weight:900;border-radius:999px;padding:4px 8px;font-size:11px}.stButton>button{border-radius:16px!important;font-weight:900!important;min-height:44px}.stTextInput input,.stNumberInput input,.stSelectbox div{border-radius:14px!important}</style>''', unsafe_allow_html=True)
@@ -203,6 +300,21 @@ def products_page(db):
     sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
      db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
+
+  with st.expander('Importar cadastro de produtos por Excel'):
+   st.caption('Use uma planilha com colunas: codigo, nome, categoria, preco, estoque, comissao. Também aceita: sku, produto, descrição, preço, valor, qtd.')
+   st.download_button('Baixar modelo de produtos', data=gerar_modelo_produtos_excel(), file_name='modelo_produtos_tigrao.xlsx', key='baixar_modelo_produtos')
+   arquivo_produtos = st.file_uploader('Selecionar planilha de produtos', type=['xlsx','xls'], key='upload_cadastro_produtos')
+   if arquivo_produtos is not None:
+    if st.button('Importar produtos agora', key='btn_importar_cadastro_produtos'):
+     try:
+      adicionados, atualizados = importar_produtos_excel(db, arquivo_produtos)
+      save_db(db)
+      st.success(f'Importação concluída: {adicionados} produtos novos e {atualizados} produtos atualizados.')
+      st.rerun()
+     except Exception as e:
+      st.error(f'Erro ao importar produtos: {e}')
+
  busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
  for p in db['products']:
   if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
