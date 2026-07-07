@@ -3,6 +3,8 @@ from datetime import datetime
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+import requests
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
 
@@ -10,23 +12,23 @@ DATA_DIR='dados_tigrao'
 DB_FILE=os.path.join(DATA_DIR,'banco.json')
 os.makedirs(DATA_DIR, exist_ok=True)
 
-STATUS=['Pendente','Faturado','Entregue','Cancelado']
+STATUS=['Pendente','Faturado','Entregue','Cancelado','Com inconsistência']
 
 INITIAL_PRODUCTS=[
- {'id':'prod-1','name':'Cerveja Heineken Long Neck 330ml','sku':'HEI-001','price':8.50,'stock':120,'category':'Cervejas','commissionRate':3},
- {'id':'prod-2','name':'Cigarro Rothmans Red Box','sku':'ROT-002','price':9.75,'stock':450,'category':'Tabacaria','commissionRate':5},
- {'id':'prod-3','name':'Refrigerante Coca-Cola 2L','sku':'COC-003','price':11.90,'stock':250,'category':'Refrigerantes','commissionRate':4},
- {'id':'prod-4','name':'Energético Monster Energy 473ml','sku':'MON-004','price':10.50,'stock':180,'category':'Energéticos','commissionRate':4},
- {'id':'prod-5','name':'Água Mineral Sem Gás 500ml','sku':'AGU-005','price':2.50,'stock':600,'category':'Águas','commissionRate':2},
- {'id':'prod-6','name':'Cerveja Amstel Lata 350ml','sku':'AMS-006','price':4.20,'stock':320,'category':'Cervejas','commissionRate':3},
- {'id':'prod-7','name':'Vodka Smirnoff 998ml','sku':'SMI-007','price':39.90,'stock':65,'category':'Destilados','commissionRate':4},
- {'id':'prod-8','name':'Whisky Johnnie Walker Red Label 1L','sku':'JWL-008','price':99.90,'stock':40,'category':'Destilados','commissionRate':4},
+ {'id':'prod-1','name':'Cerveja Heineken Long Neck 330ml','sku':'HEI-001','price':8.50,'stock':120,'category':'Cervejas','supplier':'Heineken','commissionRate':3},
+ {'id':'prod-2','name':'Cigarro Rothmans Red Box','sku':'ROT-002','price':9.75,'stock':450,'category':'Tabacaria','supplier':'Souza Cruz','commissionRate':5},
+ {'id':'prod-3','name':'Refrigerante Coca-Cola 2L','sku':'COC-003','price':11.90,'stock':250,'category':'Refrigerantes','supplier':'Coca-Cola','commissionRate':4},
+ {'id':'prod-4','name':'Energético Monster Energy 473ml','sku':'MON-004','price':10.50,'stock':180,'category':'Energéticos','supplier':'Monster','commissionRate':4},
+ {'id':'prod-5','name':'Água Mineral Sem Gás 500ml','sku':'AGU-005','price':2.50,'stock':600,'category':'Águas','supplier':'Fornecedor Geral','commissionRate':2},
+ {'id':'prod-6','name':'Cerveja Amstel Lata 350ml','sku':'AMS-006','price':4.20,'stock':320,'category':'Cervejas','supplier':'Heineken','commissionRate':3},
+ {'id':'prod-7','name':'Vodka Smirnoff 998ml','sku':'SMI-007','price':39.90,'stock':65,'category':'Destilados','supplier':'Diageo','commissionRate':4},
+ {'id':'prod-8','name':'Whisky Johnnie Walker Red Label 1L','sku':'JWL-008','price':99.90,'stock':40,'category':'Destilados','supplier':'Diageo','commissionRate':4},
 ]
 INITIAL_CLIENTS=[
- {'id':'cli-1','name':'nelson das galaxie','document':'123.456.789-00','email':'nelson@galaxie.com','phone':'(11) 98888-7777','city':'São Paulo','state':'SP'},
- {'id':'cli-2','name':'Distribuidora Silva & Silva','document':'98.765.432/0001-11','email':'silva@distribuidora.com','phone':'(11) 3245-8899','city':'Campinas','state':'SP'},
- {'id':'cli-3','name':'Mercadinho do Bairro Ltda','document':'45.123.789/0001-44','email':'contato@mercadinhobairro.com','phone':'(21) 97777-6666','city':'Rio de Janeiro','state':'RJ'},
- {'id':'cli-4','name':'Adega Central','document':'55.666.777/0001-88','email':'adega.central@outlook.com','phone':'(19) 99122-3344','city':'Piracicaba','state':'SP'},
+ {'id':'cli-1','code':'001','name':'nelson das galaxie','document':'123.456.789-00','email':'nelson@galaxie.com','phone':'(11) 98888-7777','city':'São Paulo','state':'SP'},
+ {'id':'cli-2','code':'002','name':'Distribuidora Silva & Silva','document':'98.765.432/0001-11','email':'silva@distribuidora.com','phone':'(11) 3245-8899','city':'Campinas','state':'SP'},
+ {'id':'cli-3','code':'003','name':'Mercadinho do Bairro Ltda','document':'45.123.789/0001-44','email':'contato@mercadinhobairro.com','phone':'(21) 97777-6666','city':'Rio de Janeiro','state':'RJ'},
+ {'id':'cli-4','code':'004','name':'Adega Central','document':'55.666.777/0001-88','email':'adega.central@outlook.com','phone':'(19) 99122-3344','city':'Piracicaba','state':'SP'},
 ]
 INITIAL_SALES=[
  {'id':'sales-1','name':'Vendedor','email':'vendedor@tigrao.com','active':True,'cpf':'111.111.111-11','phone':'(11) 91111-1111','address':'Rua Principal, 100','password':'123','passwordIsTemporary':True},
@@ -55,130 +57,764 @@ def save_db(db):
 def money(v): return f"R$ {float(v):,.2f}".replace(',', 'X').replace('.', ',').replace('X','.')
 def uid(prefix): return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
-def normalizar_colunas(df):
-    df = df.copy()
-    df.columns = [str(c).strip().lower() for c in df.columns]
-    return df
+def status_card_style(status):
+ status=str(status or '').lower()
+ if 'pendente' in status:
+  return 'background:#fef3c7;border:1px solid #fde68a;color:#92400e;'
+ if 'faturado' in status:
+  return 'background:#dbeafe;border:1px solid #93c5fd;color:#1e3a8a;'
+ if 'entregue' in status:
+  return 'background:#dcfce7;border:1px solid #86efac;color:#166534;'
+ return 'background:white;border:1px solid #eee;color:#171717;'
 
-def valor_texto(v):
-    if pd.isna(v): return ''
-    return str(v).strip()
 
-def valor_numero(v, padrao=0.0):
-    try:
-        if pd.isna(v): return padrao
-        if isinstance(v, str):
-            v = v.replace('R$', '').replace('.', '').replace(',', '.').strip()
-        return float(v)
-    except Exception:
-        return padrao
+def proximo_codigo(lista, campo='code'):
+ nums=[]
+ for item in lista:
+  valor=item.get(campo) or item.get('codigo') or ''
+  n=so_numeros(valor)
+  if n:
+   try:
+    nums.append(int(n))
+   except:
+    pass
+ return f"{max(nums, default=0)+1:03d}"
 
-def valor_inteiro(v, padrao=0):
-    try:
-        if pd.isna(v): return padrao
-        if isinstance(v, str):
-            v = v.replace('.', '').replace(',', '.').strip()
-        return int(float(v))
-    except Exception:
-        return padrao
+def proximo_pedido(orders):
+ nums=[]
+ for o in orders:
+  try:
+   nums.append(int(o.get('orderNumber',0)))
+  except:
+   pass
+ return max(nums, default=0)+1
 
-def buscar_coluna(df, opcoes):
-    for nome in opcoes:
-        if nome in df.columns:
-            return nome
-    return None
 
-def importar_produtos_excel(db, arquivo):
-    df = pd.read_excel(arquivo)
-    df = normalizar_colunas(df)
+def cliente_duplicado(db, documento):
+ doc=so_numeros(documento)
+ if not doc:
+  return False
+ for c in db.get('clients',[]):
+  if so_numeros(c.get('document','')) == doc:
+   return True
+ return False
 
-    col_codigo = buscar_coluna(df, ['codigo','código','sku','cod','referencia','referência'])
-    col_nome = buscar_coluna(df, ['nome','produto','descricao','descrição'])
-    col_categoria = buscar_coluna(df, ['categoria','grupo','fornecedor'])
-    col_preco = buscar_coluna(df, ['preco','preço','valor','price','venda'])
-    col_estoque = buscar_coluna(df, ['estoque','stock','quantidade','qtd'])
-    col_comissao = buscar_coluna(df, ['comissao','comissão','commissionrate','comissao %','comissão %'])
+def produto_duplicado(db, nome, codigo=''):
+ nome_norm=normalizar(nome)
+ codigo_norm=normalizar(codigo)
+ for p in db.get('products',[]):
+  nome_existente=normalizar(p.get('name',''))
+  codigo_existente=normalizar(p.get('sku','') or p.get('code',''))
+  if nome_norm and nome_existente == nome_norm:
+   return True
+  if codigo_norm and codigo_existente == codigo_norm:
+   return True
+ return False
 
-    if not col_nome:
-        raise ValueError('A planilha precisa ter uma coluna chamada Nome, Produto ou Descrição.')
 
-    existentes = {valor_texto(p.get('sku')).lower(): p for p in db['products'] if valor_texto(p.get('sku'))}
-    adicionados = 0
-    atualizados = 0
 
-    for _, row in df.iterrows():
-        nome = valor_texto(row.get(col_nome))
-        if not nome:
-            continue
+def normalizar(txt):
+ txt=str(txt or '').lower().strip()
+ troca={'á':'a','à':'a','ã':'a','â':'a','é':'e','í':'i','ó':'o','ô':'o','õ':'o','ú':'u','ç':'c'}
+ for a,b in troca.items():
+  txt=txt.replace(a,b)
+ return txt
 
-        codigo = valor_texto(row.get(col_codigo)) if col_codigo else ''
-        if not codigo:
-            codigo = f'PROD-{len(db["products"]) + adicionados + 1}'
+def so_numeros(txt):
+ return ''.join(ch for ch in str(txt or '') if ch.isdigit())
 
-        novo_produto = {
-            'id': uid('prod'),
-            'name': nome,
-            'sku': codigo,
-            'price': valor_numero(row.get(col_preco), 0.0) if col_preco else 0.0,
-            'stock': valor_inteiro(row.get(col_estoque), 0) if col_estoque else 0,
-            'category': valor_texto(row.get(col_categoria)) if col_categoria else '',
-            'commissionRate': valor_numero(row.get(col_comissao), float(db.get('commissionRate', 7))) if col_comissao else float(db.get('commissionRate', 7)),
-        }
+def comeca_com(texto, busca):
+ busca=normalizar(busca)
+ texto=normalizar(texto)
+ if not busca:
+  return True
 
-        chave = codigo.lower()
-        if chave in existentes:
-            existentes[chave].update({
-                'name': novo_produto['name'],
-                'sku': novo_produto['sku'],
-                'price': novo_produto['price'],
-                'stock': novo_produto['stock'],
-                'category': novo_produto['category'],
-                'commissionRate': novo_produto['commissionRate'],
-            })
-            atualizados += 1
-        else:
-            db['products'].insert(0, novo_produto)
-            existentes[chave] = novo_produto
-            adicionados += 1
+ busca_num=so_numeros(busca)
+ texto_num=so_numeros(texto)
 
-    return adicionados, atualizados
+ # Para código, pedido, CPF/CNPJ e telefone, aceita início ou trecho numérico.
+ if busca_num and busca_num in texto_num:
+  return True
 
-def gerar_modelo_produtos_excel():
-    out = BytesIO()
-    modelo = pd.DataFrame([
-        {'codigo':'ABC-001','nome':'Produto exemplo','categoria':'Categoria exemplo','preco':10.50,'estoque':100,'comissao':7}
-    ])
-    with pd.ExcelWriter(out, engine='openpyxl') as writer:
-        modelo.to_excel(writer, index=False, sheet_name='produtos')
-    return out.getvalue()
+ partes=texto.replace('-',' ').replace('/',' ').replace('.',' ').replace(',',' ').replace('&',' ').split()
+ return any(p.startswith(busca) for p in partes)
+
+def combina_inicio(campos, busca):
+ busca=normalizar(busca)
+ if not busca:
+  return True
+ for campo in campos:
+  if comeca_com(campo, busca):
+   return True
+ return False
+
+def sugestoes_inicio(lista, campos, busca, limite=8):
+ busca=normalizar(busca)
+ if not busca:
+  return []
+ achados=[]
+ for item in lista:
+  textos=[str(item.get(c,'')) for c in campos]
+  if combina_inicio(textos, busca):
+   achados.append(item)
+ return achados[:limite]
+
+def codigo_cliente(c):
+ cod=c.get('code') or c.get('codigo') or c.get('id','').replace('cli-','')
+ n=so_numeros(cod)
+ if n:
+  return f"{int(n):03d}"
+ return cod
+
+def campos_cliente(c):
+ return [codigo_cliente(c), c.get('name',''), c.get('document','')]
+
+def campos_produto(p):
+ return [p.get('sku',''), p.get('code',''), p.get('barcode',''), p.get('name','')]
+
+def cliente_por_id(db, client_id):
+ return next((c for c in db.get('clients',[]) if c.get('id')==client_id), {})
+
+def buscar_cnpj_internet(cnpj):
+ cnpj_limpo=so_numeros(cnpj)
+ if len(cnpj_limpo)!=14:
+  return None, 'CNPJ inválido. Digite 14 números.'
+
+ try:
+  url=f'https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}'
+  r=requests.get(url, timeout=10)
+
+  if r.status_code!=200:
+   return None, 'CNPJ não encontrado ou serviço indisponível.'
+
+  d=r.json()
+
+  telefone=''
+  if d.get('ddd_telefone_1'):
+   telefone=d.get('ddd_telefone_1')
+  elif d.get('telefone'):
+   telefone=d.get('telefone')
+
+  dados={
+   'document':cnpj_limpo,
+   'name':d.get('nome_fantasia') or d.get('razao_social') or '',
+   'email':d.get('email') or '',
+   'phone':telefone,
+   'city':d.get('municipio') or '',
+   'state':d.get('uf') or ''
+  }
+
+  return dados, None
+
+ except Exception as e:
+  return None, 'Erro ao buscar CNPJ. Verifique a internet e tente novamente.'
+
 
 def css():
  st.markdown('''<style>
- header, footer, [data-testid="stSidebar"] {display:none!important}.block-container{max-width:520px!important;padding:14px 14px 98px!important}.stApp{background:#fafafa;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#111;color:#fff;border-radius:0 0 28px 28px;padding:22px;margin:-14px -14px 16px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:12px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:24px;padding:16px}.metric b{font-size:24px}.pill{border-radius:999px;padding:6px 10px;background:#fff7ed;color:#ea580c;font-weight:900;font-size:11px}.nav{position:fixed;bottom:0;left:0;right:0;background:#111;z-index:999;padding:8px 5px 12px;display:flex;justify-content:center;gap:4px}.nav button{min-width:64px;border:0;background:#111;color:#eee;border-radius:18px;padding:8px 6px;font-size:11px;font-weight:800}.nav .on{background:#f97316;color:#111}.status{font-weight:900;border-radius:999px;padding:4px 8px;font-size:11px}.stButton>button{border-radius:16px!important;font-weight:900!important;min-height:44px}.stTextInput input,.stNumberInput input,.stSelectbox div{border-radius:14px!important}
- /* Correção visual do login no celular */
- label, .stRadio label, .stTextInput label, .stPassword label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#171717!important;font-weight:800!important;}
- .stTextInput input {background:#ffffff!important;color:#171717!important;border:1px solid #ddd!important;}
- .stTextInput input::placeholder {color:#777!important;}
- .stFormSubmitButton button {background:#f97316!important;color:#111!important;border:0!important;}
- button[kind="secondary"] {color:#171717!important;}
- .stAlert {border-radius:16px!important;}
- [data-testid="stStatusWidget"], [data-testid="stDecoration"] {display:none!important;}
+ header, footer, [data-testid="stSidebar"] {display:none!important}
+
+ .block-container{
+   max-width:520px!important;
+   padding:14px 14px 86px!important;
+ }
+
+ .stApp{
+   background:#fafafa;
+   color:#171717;
+ }
+
+ *{
+   font-family:Inter,Arial,sans-serif;
+ }
+
+ .top{
+   background:#111;
+   color:#fff;
+   border-radius:0 0 28px 28px;
+   padding:22px;
+   margin:-14px -14px 14px;
+ }
+
+ .brand{
+   display:flex;
+   gap:12px;
+   align-items:center;
+ }
+
+ .logo{
+   width:48px;
+   height:48px;
+   background:#f97316;
+   border-radius:18px;
+   display:flex;
+   align-items:center;
+   justify-content:center;
+   font-size:28px;
+ }
+
+ .title{
+   font-size:26px;
+   font-weight:900;
+ }
+
+ .sub{
+   color:#fb923c;
+   font-size:11px;
+   font-weight:900;
+   letter-spacing:2px;
+ }
+
+ .card{
+   background:white;
+   border:1px solid #eee;
+   border-radius:24px;
+   padding:16px;
+   margin:10px 0;
+   box-shadow:0 8px 24px rgba(0,0,0,.05);
+ }
+
+ .metric{
+   background:#111;
+   color:#fff;
+   border-radius:22px;
+   padding:12px 16px;
+   min-height:86px;
+ }
+
+ .metric b{
+   font-size:22px;
+   line-height:1.1;
+ }
+
+ .pill{
+   border-radius:999px;
+   padding:6px 10px;
+   background:#fff7ed;
+   color:#ea580c;
+   font-weight:900;
+   font-size:11px;
+ }
+
+ .status{
+   font-weight:900;
+   border-radius:999px;
+   padding:4px 8px;
+   font-size:11px;
+ }
+
+ .stButton>button{
+   border-radius:16px!important;
+   font-weight:900!important;
+   min-height:44px;
+ }
+
+ .stTextInput input,
+ .stNumberInput input,
+ .stSelectbox div{
+   border-radius:14px!important;
+ }
+
+ h2, h3{
+   margin-top:12px!important;
+ }
+
+ @media (max-width:640px){
+   .block-container{
+     max-width:100%!important;
+     padding:12px 14px 86px!important;
+   }
+
+   .top{
+     padding:20px;
+     margin:-12px -14px 12px;
+   }
+
+   .metric{
+     padding:10px 16px!important;
+     min-height:78px!important;
+     border-radius:20px!important;
+     margin-bottom:8px!important;
+   }
+
+   .metric b{
+     font-size:20px!important;
+   }
+
+   h2, h3{
+     margin-top:8px!important;
+     margin-bottom:8px!important;
+   }
+
+   [data-testid="stVerticalBlock"]{
+     gap:.35rem!important;
+   }
+ }
+ 
+ /* CORES DOS BOTÕES ESPECÍFICOS */
+ .st-key-btn_add_produto_pedido button{
+   background:#fb923c!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ div[class*="st-key-excluir_item_temp_"] button,
+ div[class*="st-key-del_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .st-key-nav_products button{
+   background:#bbf7d0!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ .st-key-nav_products button[kind="primary"]{
+   background:#86efac!important;
+   color:#111!important;
+ }
+
+ 
+ /* AJUSTE VISUAL MOBILE - NOVO PEDIDO */
+ .stApp{
+   background:#fff!important;
+ }
+
+ .block-container{
+   padding-top:8px!important;
+   padding-bottom:120px!important;
+ }
+
+ .top{
+   background:#050505!important;
+   border-radius:0 0 26px 26px!important;
+   margin-bottom:18px!important;
+ }
+
+ .stSelectbox label,
+ .stTextInput label,
+ .stNumberInput label{
+   font-size:18px!important;
+   font-weight:800!important;
+   color:#111!important;
+ }
+
+ div[data-baseweb="select"] > div{
+   background:#fff!important;
+   border:1.8px solid #fb923c!important;
+   border-radius:16px!important;
+   min-height:56px!important;
+   color:#111!important;
+ }
+
+ div[data-baseweb="select"] *{
+   color:#111!important;
+ }
+
+ .stTextInput input,
+ .stNumberInput input{
+   background:#fff!important;
+   color:#111!important;
+   border:1.8px solid #fb923c!important;
+   border-radius:16px!important;
+   min-height:56px!important;
+   font-size:17px!important;
+ }
+
+ .stTextInput input::placeholder{
+   color:#777!important;
+ }
+
+ .stButton>button{
+   min-height:58px!important;
+   border-radius:18px!important;
+   font-size:17px!important;
+   font-weight:900!important;
+ }
+
+ .st-key-btn_salvar_pedido_final button{
+   background:#fb923c!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .st-key-btn_limpar_pedido_temp button{
+   background:#fff!important;
+   color:#ea580c!important;
+   border:1.8px solid #fb923c!important;
+ }
+
+ .st-key-btn_add_produto_pedido button{
+   background:#fdba74!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ div[class*="st-key-excluir_item_temp_"] button,
+ div[class*="st-key-del_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+ }
+
+ .stAlert{
+   border-radius:16px!important;
+ }
+
+ .st-key-bottom_nav{
+   height:86px!important;
+   border-radius:22px 22px 0 0!important;
+   padding-top:8px!important;
+ }
+
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+   height:72px!important;
+   max-width:520px!important;
+   padding:0 6px!important;
+ }
+
+ .st-key-bottom_nav .stButton>button{
+   height:62px!important;
+   min-height:62px!important;
+   font-size:12px!important;
+   line-height:1.05!important;
+   border-radius:18px!important;
+   padding:2px 0!important;
+ }
+
+ .st-key-nav_newOrder button[kind="primary"]{
+   background:#fb923c!important;
+   color:#111!important;
+ }
+
+ .st-key-nav_products button{
+   background:#111!important;
+   color:#eee!important;
+ }
+
+ .st-key-nav_products button[kind="primary"]{
+   background:#bbf7d0!important;
+   color:#111!important;
+ }
+
+ @media(max-width:640px){
+   h1,h2,h3{
+     letter-spacing:-.5px!important;
+   }
+
+   .block-container{
+     padding-left:18px!important;
+     padding-right:18px!important;
+   }
+
+   .top{
+     margin-left:-18px!important;
+     margin-right:-18px!important;
+   }
+
+   .st-key-bottom_nav{
+     height:88px!important;
+     padding-bottom:calc(6px + env(safe-area-inset-bottom))!important;
+   }
+
+   .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+     width:100%!important;
+     max-width:100%!important;
+     grid-template-columns:repeat(6,minmax(0,1fr))!important;
+     gap:3px!important;
+   }
+
+   .st-key-bottom_nav .stButton>button{
+     font-size:11px!important;
+     height:60px!important;
+     min-height:60px!important;
+   }
+ }
+
+ 
+ /* AJUSTES GERAIS MOBILE - CLIENTES / PRODUTOS / VENDEDORES */
+ [data-testid="stExpander"]{
+   background:#fff!important;
+   border:1px solid #eee!important;
+   border-radius:18px!important;
+   overflow:hidden!important;
+   box-shadow:0 4px 18px rgba(0,0,0,.03)!important;
+   margin-bottom:10px!important;
+ }
+
+ [data-testid="stExpander"] details summary{
+   background:#fff!important;
+   color:#111!important;
+   min-height:52px!important;
+   padding:12px 14px!important;
+   font-size:17px!important;
+   font-weight:800!important;
+ }
+
+ [data-testid="stExpander"] details summary *{
+   color:#111!important;
+ }
+
+ [data-testid="stExpander"] [data-testid="stVerticalBlock"]{
+   background:#fff!important;
+   color:#111!important;
+ }
+
+ div[class*="st-key-edit_"] button{
+   background:#2563eb!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ div[class*="st-key-del_"] button,
+ div[class*="st-key-excluir_item_temp_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ div[class*="st-key-a"] button{
+   background:#f59e0b!important;
+   color:#111!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ .st-key-btn_buscar_cnpj_cliente button{
+   background:#fb923c!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ .st-key-btn_salvar_pedido_final button{
+   background:#fb923c!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ .st-key-btn_limpar_pedido_temp button{
+   background:#fff!important;
+   color:#ea580c!important;
+   border:2px solid #fb923c!important;
+   width:100%!important;
+ }
+
+ .st-key-bottom_nav .stButton>button{
+   font-size:10px!important;
+   line-height:1.05!important;
+   white-space:pre-line!important;
+ }
+
+ @media(max-width:640px){
+   .stButton>button{
+     min-height:52px!important;
+     font-size:16px!important;
+   }
+
+   [data-testid="stExpander"] details summary{
+     font-size:16px!important;
+   }
+
+   .st-key-bottom_nav .stButton>button{
+     font-size:10px!important;
+     height:60px!important;
+     min-height:60px!important;
+     padding:1px 0!important;
+   }
+
+   .block-container{
+     padding-bottom:122px!important;
+   }
+ }
+
  </style>''', unsafe_allow_html=True)
 
 def header(db):
  user=st.session_state.get('user_name','')
  st.markdown(f'''<div class="top"><div class="brand"><div class="logo">🐯</div><div><div class="sub">DISTRIBUIDORA</div><div class="title">{db.get('systemName','TIGRÃO')}</div><div style="color:#aaa;font-size:12px">{user}</div></div></div></div>''', unsafe_allow_html=True)
 
+
+def tigrinho_salvo():
+ if not st.session_state.get('show_tigrinho_salvo'):
+  return
+
+ components.html("""
+ <div id="tigrinho" style="
+   position:fixed;
+   top:28px;
+   right:22px;
+   z-index:999999999;
+   background:white;
+   border:3px solid #fb923c;
+   border-radius:24px;
+   padding:12px 16px;
+   box-shadow:0 10px 35px rgba(0,0,0,.25);
+   text-align:center;
+   font-family:Arial,sans-serif;
+   animation:entraSai 1.8s ease-in-out forwards;
+ ">
+   <div style="font-size:58px;line-height:1">🐯</div>
+   <div style="font-size:15px;font-weight:900;color:#111;margin-top:4px">
+     Pedido salvo!
+   </div>
+ </div>
+
+ <script>
+ function somTigrinho(){
+   try{
+     const AudioContext = window.AudioContext || window.webkitAudioContext;
+     const ctx = new AudioContext();
+
+     const osc = ctx.createOscillator();
+     const gain = ctx.createGain();
+     const filter = ctx.createBiquadFilter();
+
+     osc.type = "sawtooth";
+     osc.frequency.setValueAtTime(160, ctx.currentTime);
+     osc.frequency.exponentialRampToValueAtTime(75, ctx.currentTime + 0.45);
+
+     filter.type = "lowpass";
+     filter.frequency.setValueAtTime(500, ctx.currentTime);
+
+     gain.gain.setValueAtTime(0.001, ctx.currentTime);
+     gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + 0.08);
+     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+
+     osc.connect(filter);
+     filter.connect(gain);
+     gain.connect(ctx.destination);
+
+     osc.start();
+     osc.stop(ctx.currentTime + 0.6);
+   }catch(e){}
+ }
+
+ setTimeout(somTigrinho, 120);
+ setTimeout(function(){
+   const t=document.getElementById("tigrinho");
+   if(t){t.remove();}
+ }, 1900);
+ </script>
+
+ <style>
+ @keyframes entraSai{
+   0%{opacity:0;transform:translateY(-25px) scale(.8);}
+   15%{opacity:1;transform:translateY(0) scale(1);}
+   75%{opacity:1;transform:translateY(0) scale(1);}
+   100%{opacity:0;transform:translateY(-25px) scale(.8);}
+ }
+ </style>
+ """, height=0)
+
+ st.session_state.show_tigrinho_salvo=False
+
+
 def nav():
- tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
+ tabs=[('dashboard','🏠','Início'),('newOrder','➕','Novo'),('orders','📦','Pedidos'),('clients','👥','Cliente'),('products','🛒','Prod.'),('more','•••','Mais')]
+
  st.markdown('''
  <style>
- .st-key-bottom_nav {position: fixed !important;left: 0 !important;right: 0 !important;bottom: 0 !important;z-index: 999999 !important;background: #111 !important;padding: 8px 5px 12px 5px !important;border-top: 1px solid #222 !important;}
- .st-key-bottom_nav [data-testid="stHorizontalBlock"] {max-width: 520px !important;margin: auto !important;gap: 4px !important;}
- .st-key-bottom_nav .stButton > button {width: 100% !important;min-height: 54px !important;border: 0 !important;border-radius: 18px !important;background: #111 !important;color: #eee !important;font-size: 11px !important;font-weight: 900 !important;padding: 4px 2px !important;}
- .st-key-bottom_nav .stButton > button[kind="primary"] {background: #f97316 !important;color: #111 !important;}
+ .st-key-bottom_nav{
+   position:fixed!important;
+   left:0!important;
+   right:0!important;
+   bottom:0!important;
+   z-index:999999!important;
+   background:#111!important;
+   height:72px!important;
+   padding:5px 3px calc(5px + env(safe-area-inset-bottom)) 3px!important;
+   border-top:1px solid #222!important;
+   overflow:hidden!important;
+ }
+
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+   width:100%!important;
+   max-width:520px!important;
+   height:62px!important;
+   margin:0 auto!important;
+   display:grid!important;
+   grid-template-columns:repeat(6, 1fr)!important;
+   gap:2px!important;
+   align-items:center!important;
+ }
+
+ .st-key-bottom_nav [data-testid="column"]{
+   width:100%!important;
+   min-width:0!important;
+   max-width:none!important;
+   padding:0!important;
+   flex:none!important;
+ }
+
+ .st-key-bottom_nav [data-testid="column"] > div{
+   width:100%!important;
+   min-width:0!important;
+ }
+
+ .st-key-bottom_nav .stButton{
+   width:100%!important;
+   min-width:0!important;
+ }
+
+ .st-key-bottom_nav .stButton > button{
+   width:100%!important;
+   min-width:0!important;
+   height:56px!important;
+   min-height:56px!important;
+   border:0!important;
+   border-radius:15px!important;
+   background:#111!important;
+   color:#eee!important;
+   font-size:10px!important;
+   font-weight:900!important;
+   padding:2px 0!important;
+   line-height:1.05!important;
+   white-space:pre-line!important;
+   overflow:hidden!important;
+   text-align:center!important;
+ }
+
+ .st-key-bottom_nav .stButton > button[kind="primary"]{
+   background:#f97316!important;
+   color:#111!important;
+ }
+
+ @media (max-width:640px){
+   .st-key-bottom_nav{
+     height:70px!important;
+     padding:4px 2px calc(4px + env(safe-area-inset-bottom)) 2px!important;
+   }
+
+   .st-key-bottom_nav [data-testid="stHorizontalBlock"]{
+     width:100vw!important;
+     max-width:100vw!important;
+     height:60px!important;
+     grid-template-columns:repeat(6, minmax(0, 1fr))!important;
+     gap:1px!important;
+   }
+
+   .st-key-bottom_nav .stButton > button{
+     height:56px!important;
+     min-height:56px!important;
+     border-radius:14px!important;
+     font-size:9px!important;
+     padding:1px 0!important;
+   }
+ }
+
+ @media (max-width:390px){
+   .st-key-bottom_nav .stButton > button{
+     font-size:8px!important;
+   }
+ }
  </style>
  ''', unsafe_allow_html=True)
+
  with st.container(key='bottom_nav'):
   cols=st.columns(6)
   for col,(key,ico,label) in zip(cols,tabs):
@@ -188,34 +824,63 @@ def nav():
     st.rerun()
 
 def login(db):
- st.markdown('<div style="height:40px"></div><div class="card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
+ st.markdown('<div style="height:28px"></div><div class="card login-card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
+
  with st.form('login'):
-  perfil=st.radio('Perfil',['Admin','Vendedor'], horizontal=True, key='login_perfil')
-  usuario=st.text_input('Usuário / e-mail', value='', key='login_usuario_novo')
-  senha=st.text_input('Senha', value='', type='password', key='login_senha_nova')
+  usuario=st.text_input('Usuário / e-mail', key='login_usuario')
+  senha=st.text_input('Senha', type='password', key='login_senha')
   ok=st.form_submit_button('Entrar')
+
  if ok:
-  usuario_limpo = usuario.strip().lower()
-  if perfil=='Admin' and usuario_limpo in ['admin','administrador'] and senha=='admin123':
+  usuario_limpo=usuario.lower().strip()
+
+  if usuario_limpo in ['admin','administrador'] and senha=='admin123':
    st.session_state.auth=True
    st.session_state.role='admin'
    st.session_state.sales_id=''
    st.session_state.user_name='Administrador'
    st.rerun()
+
   sellers=[s for s in db['salespeople'] if s.get('active')]
-  seller=next((s for s in sellers if usuario_limpo in [s['email'].lower(), s['name'].lower()] and senha==s.get('password','123')),None)
-  if perfil=='Vendedor' and seller:
+  seller=next((s for s in sellers if usuario_limpo in [s.get('email','').lower(), s.get('name','').lower()] and senha==s.get('password','123')),None)
+
+  if seller:
    st.session_state.auth=True
    st.session_state.role='vendedor'
    st.session_state.sales_id=seller['id']
    st.session_state.user_name=seller['name']
    st.rerun()
+
   st.error('Login ou senha inválidos')
 
+ st.info('Admin: admin / admin123   |   Vendedor: e-mail cadastrado / senha cadastrada')
+
 def filtered_orders(db):
- orders=db['orders']
- if st.session_state.role=='vendedor': orders=[o for o in orders if o['salespersonId']==st.session_state.sales_id]
+ orders=db.get('orders',[])
+ if st.session_state.get('role')=='vendedor':
+  sid=st.session_state.get('sales_id','')
+  orders=[o for o in orders if o.get('salespersonId')==sid]
  return orders
+
+def garantir_lixeira(db):
+ if 'deleted_orders' not in db:
+  db['deleted_orders']=[]
+
+def excluir_pedido_com_motivo(db, pedido_id, motivo):
+ garantir_lixeira(db)
+ pedido=next((o for o in db.get('orders',[]) if o.get('id')==pedido_id), None)
+ if not pedido:
+  return False
+ pedido_excluido=dict(pedido)
+ pedido_excluido['deletedAt']=datetime.now().isoformat(timespec='seconds')
+ pedido_excluido['deletedBy']=st.session_state.get('user_name','')
+ pedido_excluido['deleteReason']=motivo
+ pedido_excluido['originalStatus']=pedido.get('status','')
+ db['deleted_orders'].insert(0, pedido_excluido)
+ db['orders']=[o for o in db.get('orders',[]) if o.get('id')!=pedido_id]
+ save_db(db)
+ return True
+
 
 def dashboard(db):
  orders=filtered_orders(db); total=sum(o['total'] for o in orders); com=sum(o.get('commissionAmount',0) for o in orders)
@@ -225,102 +890,511 @@ def dashboard(db):
  c1,c2,c3=st.columns(3); c1.metric('Pedidos',len(orders)); c2.metric('Clientes',len(db['clients'])); c3.metric('Produtos',len(db['products']))
  st.subheader('Últimos pedidos')
  for o in sorted(orders,key=lambda x:x['orderNumber'],reverse=True)[:10]:
-  st.markdown(f'<div class="card"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{o["salespersonName"]} • {o["status"]}<br><h3>{money(o["total"])}</h3></div>',unsafe_allow_html=True)
+  style=status_card_style(o.get('status',''))
+  st.markdown(f'<div class="card" style="{style}"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{o["salespersonName"]} • {o["status"]}<br><h3>{money(o["total"])}</h3></div>',unsafe_allow_html=True)
 
 def new_order(db):
- st.subheader('➕ Novo Pedido')
+ st.markdown('## ➕ Novo Pedido')
  clients=db['clients']; products=db['products']; sales=db['salespeople']
- with st.form('order_form'):
-  c=st.selectbox('Cliente', clients, format_func=lambda x:f"{x['name']} — {x['document']}", key='pedido_cliente')
-  if st.session_state.role=='admin': s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
-  else: s=next(x for x in sales if x['id']==st.session_state.sales_id)
-  st.write('Produtos')
-  items=[]
-  for i in range(1,7):
-   col1,col2=st.columns([3,1])
-   p=col1.selectbox(f'Produto {i}', [None]+products, format_func=lambda x:'Selecione' if x is None else f"{x['sku']} - {x['name']} ({money(x['price'])})", key=f'p{i}')
-   q=col2.number_input('Qtd', min_value=0, step=1, key=f'q{i}')
-   if p and q>0: items.append({'productId':p['id'],'productName':p['name'],'quantity':int(q),'price':float(p['price']),'commissionRate':p.get('commissionRate',db['commissionRate'])})
-  salvar=st.form_submit_button('Salvar pedido')
- if salvar:
-  if not items: st.error('Adicione pelo menos 1 produto')
+
+ if 'pedido_itens_temp' not in st.session_state:
+  st.session_state.pedido_itens_temp=[]
+
+ if 'pedido_cliente_id' not in st.session_state:
+  st.session_state.pedido_cliente_id=''
+
+ st.markdown('### Cliente')
+
+ busca_cliente=st.text_input(
+  'Buscar cliente',
+  key='pedido_busca_cliente_digitavel',
+  placeholder='Digite nome, código ou CNPJ'
+ )
+
+ clientes_encontrados=[]
+ if busca_cliente:
+  clientes_encontrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)][:8]
+ else:
+  clientes_encontrados=[]
+
+ if busca_cliente and not clientes_encontrados:
+  st.warning('Nenhum cliente encontrado.')
+
+ if clientes_encontrados:
+  st.caption('Toque no cliente para selecionar')
+  for c_item in clientes_encontrados:
+   cod=codigo_cliente(c_item)
+   if st.button(f'{cod} — {c_item["name"]}', key='selecionar_cliente_'+c_item['id']):
+    st.session_state.pedido_cliente_id=c_item['id']
+    st.rerun()
+
+ c=next((cli for cli in clients if cli.get('id')==st.session_state.get('pedido_cliente_id','')), None)
+
+ if c:
+  st.markdown(
+   f'<div class="card"><b>Cliente selecionado</b><br>{codigo_cliente(c)} — {c["name"]}<br>{c.get("document","")}</div>',
+   unsafe_allow_html=True
+  )
+ else:
+  st.info('Digite e selecione um cliente para continuar.')
+
+ if st.session_state.role=='admin':
+  s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
+ else:
+  s=next(x for x in sales if x['id']==st.session_state.sales_id)
+
+ prazo_pagamento=st.text_input('Prazo de pagamento', key='pedido_prazo_pagamento', placeholder='Ex: À vista, 7 dias, 14/21 dias')
+
+ st.markdown('### Produto')
+
+ p=st.selectbox(
+  'Produto',
+  [None]+products,
+  format_func=lambda x:'Selecione o produto' if x is None else x['name'],
+  key='pedido_produto_unico'
+ )
+
+ if p:
+  colq,cold,colb=st.columns([1,1,2])
+  qtd=colq.number_input('Qtd', min_value=1, step=1, key='pedido_qtd_unica')
+  desconto=cold.text_input('Desconto', key='pedido_desconto', placeholder='Ex: 5%')
+  if colb.button('Adicionar ao pedido', key='btn_add_produto_pedido'):
+   item={
+    'productId':p['id'],
+    'productName':p['name'],
+    'quantity':int(qtd),
+    'price':float(p['price']),
+    'discount':desconto,
+    'commissionRate':p.get('commissionRate',db['commissionRate'])
+   }
+   st.session_state.pedido_itens_temp.append(item)
+   st.rerun()
+
+ st.markdown('### Itens do pedido')
+
+ if not st.session_state.pedido_itens_temp:
+  st.info('Nenhum produto adicionado ainda.')
+ else:
+  total_temp=sum(it['quantity']*it['price'] for it in st.session_state.pedido_itens_temp)
+
+  for idx,it in enumerate(st.session_state.pedido_itens_temp):
+   subtotal=it['quantity']*it['price']
+   desc=it.get('discount','')
+   col1,col2=st.columns([4,1])
+   texto_desc=f'<br>Desconto: {desc}' if desc else ''
+   col1.markdown(f'<div class="card"><b>{it["productName"]}</b><br>Qtd: {it["quantity"]} • Unitário: {money(it["price"])}{texto_desc}<br><b>Subtotal: {money(subtotal)}</b></div>', unsafe_allow_html=True)
+   if col2.button('Excluir', key=f'excluir_item_temp_{idx}'):
+    st.session_state.pedido_itens_temp.pop(idx)
+    st.rerun()
+
+  st.markdown(f'<div class="metric">Total do pedido<br><b>{money(total_temp)}</b></div>', unsafe_allow_html=True)
+
+ col1,col2=st.columns(2)
+
+ if col1.button('Salvar pedido', key='btn_salvar_pedido_final'):
+  items=st.session_state.pedido_itens_temp
+
+  if not c:
+   st.error('Selecione um cliente.')
+  elif not items:
+   st.error('Adicione pelo menos 1 produto.')
   else:
-   total=sum(it['quantity']*it['price'] for it in items); rate=float(db['commissionRate']); maxnum=max([o['orderNumber'] for o in db['orders']], default=-1)+1
-   db['orders'].insert(0,{'id':uid('ord'),'orderNumber':maxnum,'date':datetime.now().isoformat(timespec='seconds'),'salespersonId':s['id'],'salespersonName':s['name'],'clientId':c['id'],'clientName':c['name'],'items':items,'total':total,'commissionRate':rate,'commissionAmount':round(total*rate/100,2),'status':'Pendente'})
+   total=sum(it['quantity']*it['price'] for it in items)
+   rate=float(db['commissionRate'])
+   maxnum=proximo_pedido(db['orders'])
+   descontos=', '.join([it.get('discount','') for it in items if it.get('discount','')])
+
+   db['orders'].insert(0,{
+    'id':uid('ord'),
+    'orderNumber':maxnum,
+    'date':datetime.now().isoformat(timespec='seconds'),
+    'salespersonId':s['id'],
+    'salespersonName':s['name'],
+    'clientId':c['id'],
+    'clientName':c['name'],
+    'items':items,
+    'total':total,
+    'discount':descontos,
+    'paymentTerm':prazo_pagamento,
+    'commissionRate':rate,
+    'commissionAmount':round(total*rate/100,2),
+    'status':'Pendente'
+   })
+
    for it in items:
-    for p in db['products']:
-     if p['id']==it['productId']: p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
-   save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
+    for prod in db['products']:
+     if prod['id']==it['productId']:
+      prod['stock']=max(0,int(prod.get('stock',0))-it['quantity'])
+
+   save_db(db)
+   st.session_state.pedido_itens_temp=[]
+   st.session_state.pedido_cliente_id=''
+   st.session_state.show_tigrinho_salvo=True
+   st.success('Pedido salvo com sucesso')
+   st.session_state.tab='orders'
+   st.rerun()
+
+ if col2.button('Limpar pedido', key='btn_limpar_pedido_temp'):
+  st.session_state.pedido_itens_temp=[]
+  st.session_state.pedido_cliente_id=''
+  st.rerun()
 
 def orders_page(db):
  st.subheader('📦 Pedidos')
- busca=st.text_input('Pesquisar pedido, cliente ou vendedor', key='busca_pedidos')
+ busca=st.text_input('Pesquisar pedido por número, cliente, código ou CNPJ/CPF', key='busca_pedidos')
  for o in sorted(filtered_orders(db),key=lambda x:x['orderNumber'],reverse=True):
-  if busca and busca.lower() not in json.dumps(o,ensure_ascii=False).lower(): continue
-  with st.expander(f"#{o['orderNumber']} — {o['clientName']} — {money(o['total'])} — {o['status']}"):
+  cli=cliente_por_id(db, o.get('clientId',''))
+  campos=[o.get('orderNumber',''),o.get('clientName',''),codigo_cliente(cli),cli.get('document','')]
+  if busca and not combina_inicio(campos, busca):
+   continue
+  style=status_card_style(o.get('status',''))
+  st.markdown(f'<div class="card" style="{style}"><b>#{o["orderNumber"]} — {o["clientName"]}</b><br>{money(o["total"])} • {o["status"]}</div>', unsafe_allow_html=True)
+  with st.expander(f"Ver detalhes do pedido #{o['orderNumber']}"):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
+   if cli:
+    st.write('Cliente:', f"{codigo_cliente(cli)} — {cli.get('document','')}")
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
+   st.write('Desconto:', o.get('discount',''))
+   st.write('Prazo de pagamento:', o.get('paymentTerm',''))
    st.write('Comissão:', money(o.get('commissionAmount',0)))
+   if st.session_state.get('role')!='admin':
+    st.caption('Você está visualizando apenas os seus pedidos.')
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
     if col1.button('Atualizar', key='up'+o['id']): o['status']=ns; save_db(db); st.rerun()
-    if col2.button('Excluir pedido', key='del'+o['id']): db['orders']=[x for x in db['orders'] if x['id']!=o['id']]; save_db(db); st.rerun()
+    if col2.button('Excluir pedido', key='del'+o['id']):
+     st.session_state['pedido_para_excluir']=o['id']
+     st.rerun()
+
+    if st.session_state.get('pedido_para_excluir')==o['id']:
+     st.markdown('#### Confirmar exclusão')
+     motivo=st.text_area('Motivo da exclusão', key='motivo_exclusao_'+o['id'], placeholder='Informe o motivo da exclusão do pedido')
+
+     confirmado=True
+     if o.get('status')=='Faturado':
+      confirmado=st.checkbox('Confirmo que desejo excluir este pedido faturado', key='confirma_excluir_faturado_'+o['id'])
+      st.warning('Pedido faturado exige segunda confirmação para exclusão.')
+
+     colc1,colc2=st.columns(2)
+
+     if colc1.button('Confirmar exclusão', key='confirmar_exclusao_'+o['id']):
+      if not motivo.strip():
+       st.error('Informe o motivo da exclusão.')
+      elif not confirmado:
+       st.error('Confirme a exclusão do pedido faturado.')
+      else:
+       excluir_pedido_com_motivo(db, o['id'], motivo.strip())
+       st.session_state.pop('pedido_para_excluir', None)
+       st.success('Pedido excluído e enviado para Pedidos excluídos.')
+       st.rerun()
+
+     if colc2.button('Cancelar exclusão', key='cancelar_exclusao_'+o['id']):
+      st.session_state.pop('pedido_para_excluir', None)
+      st.rerun()
 
 def clients_page(db):
  st.subheader('👥 Clientes')
+
  with st.expander('Cadastrar cliente'):
+  st.markdown('#### Buscar dados pelo CNPJ')
+  cnpj_busca=st.text_input('CNPJ', key='cliente_cnpj_busca', placeholder='Digite o CNPJ para buscar automaticamente')
+
+  if st.button('Buscar dados do CNPJ', key='btn_buscar_cnpj_cliente'):
+   dados, erro=buscar_cnpj_internet(cnpj_busca)
+   if erro:
+    st.error(erro)
+   else:
+    st.session_state['cliente_doc']=dados.get('document','')
+    st.session_state['cliente_nome']=dados.get('name','')
+    st.session_state['cliente_email']=dados.get('email','')
+    st.session_state['cliente_tel']=dados.get('phone','')
+    st.session_state['cliente_cidade']=dados.get('city','')
+    st.session_state['cliente_estado']=dados.get('state','')
+    st.success('Dados encontrados. Confira e clique em Salvar cliente.')
+
+  codigo_auto=proximo_codigo(db['clients'])
+  st.info(f'Código automático do próximo cliente: {codigo_auto}')
+
   with st.form('cli'):
-   n=st.text_input('Nome', key='cliente_nome'); doc=st.text_input('CPF/CNPJ', key='cliente_doc'); em=st.text_input('E-mail', key='cliente_email'); ph=st.text_input('Telefone', key='cliente_tel'); city=st.text_input('Cidade', key='cliente_cidade'); uf=st.text_input('Estado', key='cliente_estado')
+   n=st.text_input('Nome / Razão social', key='cliente_nome')
+   doc=st.text_input('CNPJ/CPF', key='cliente_doc')
+   em=st.text_input('E-mail', key='cliente_email')
+   ph=st.text_input('Telefone', key='cliente_tel')
+   city=st.text_input('Cidade', key='cliente_cidade')
+   uf=st.text_input('Estado', key='cliente_estado')
+
    if st.form_submit_button('Salvar cliente') and n:
-    db['clients'].insert(0,{'id':uid('cli'),'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf}); save_db(db); st.rerun()
- busca=st.text_input('Pesquisar por nome, documento, cidade ou iniciais', key='busca_clientes')
- for c in db['clients']:
-  if busca and busca.lower() not in json.dumps(c,ensure_ascii=False).lower(): continue
-  st.markdown(f'<div class="card"><b>{c["name"]}</b><br>{c["document"]}<br>{c["phone"]} • {c["city"]}/{c["state"]}</div>', unsafe_allow_html=True)
+    if cliente_duplicado(db, doc):
+     st.error('Cliente já cadastrado com esse CNPJ/CPF.')
+    else:
+     codigo=proximo_codigo(db['clients'])
+     db['clients'].insert(0,{'id':uid('cli'),'code':codigo,'name':n,'document':doc,'email':em,'phone':ph,'city':city,'state':uf})
+     save_db(db)
+     st.rerun()
+
+ busca=st.text_input('Pesquisar cliente', key='busca_clientes', placeholder='Nome, código ou CNPJ/CPF')
+ encontrados=[c for c in db['clients'] if combina_inicio(campos_cliente(c), busca)] if busca else db['clients']
+
+ if busca and not encontrados:
+  st.warning('Nenhum cliente encontrado.')
+
+ for c in encontrados:
+  cod=codigo_cliente(c)
+  with st.expander(f'{cod} — {c["name"]}'):
+   st.write('CNPJ/CPF:', c.get('document',''))
+   st.write('Telefone:', c.get('phone',''))
+   st.write('Cidade/Estado:', f'{c.get("city","")}/{c.get("state","")}')
+
+   col1,col2=st.columns(2)
+   editar=col1.button('Editar', key='edit_cli_'+c['id'])
+   excluir=col2.button('Excluir', key='del_cli_'+c['id'])
+
+   if excluir:
+    usado=any(o.get('clientId')==c.get('id') for o in db.get('orders',[]))
+    if usado:
+     st.error('Não é possível excluir: esse cliente possui pedidos cadastrados.')
+    else:
+     db['clients']=[x for x in db['clients'] if x['id']!=c['id']]
+     save_db(db)
+     st.rerun()
+
+   if editar or st.session_state.get('editando_cliente')==c['id']:
+    st.session_state['editando_cliente']=c['id']
+    with st.form('form_edit_cliente_'+c['id']):
+     novo_nome=st.text_input('Nome / Razão social', value=c.get('name',''), key='edit_cli_nome_'+c['id'])
+     novo_doc=st.text_input('CNPJ/CPF', value=c.get('document',''), key='edit_cli_doc_'+c['id'])
+     novo_email=st.text_input('E-mail', value=c.get('email',''), key='edit_cli_email_'+c['id'])
+     novo_tel=st.text_input('Telefone', value=c.get('phone',''), key='edit_cli_tel_'+c['id'])
+     nova_cidade=st.text_input('Cidade', value=c.get('city',''), key='edit_cli_cidade_'+c['id'])
+     novo_estado=st.text_input('Estado', value=c.get('state',''), key='edit_cli_estado_'+c['id'])
+     salvar=st.form_submit_button('Salvar edição')
+     cancelar=st.form_submit_button('Cancelar')
+
+    if salvar:
+     doc_repetido=False
+     for outro in db['clients']:
+      if outro['id']!=c['id'] and so_numeros(outro.get('document',''))==so_numeros(novo_doc) and so_numeros(novo_doc):
+       doc_repetido=True
+
+     if doc_repetido:
+      st.error('Já existe outro cliente com esse CNPJ/CPF.')
+     else:
+      c['name']=novo_nome
+      c['document']=novo_doc
+      c['email']=novo_email
+      c['phone']=novo_tel
+      c['city']=nova_cidade
+      c['state']=novo_estado
+      save_db(db)
+      st.session_state.pop('editando_cliente', None)
+      st.rerun()
+
+    if cancelar:
+     st.session_state.pop('editando_cliente', None)
+     st.rerun()
 
 def products_page(db):
  st.subheader('🛒 Produtos')
  if st.session_state.role=='admin':
   with st.expander('Cadastrar produto'):
+   codigo_auto=proximo_codigo(db['products'], campo='sku')
+   st.info(f'Código automático do próximo produto: {codigo_auto}')
+
    with st.form('prod'):
-    sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
+    n=st.text_input('Nome', key='prod_nome')
+    cat=st.text_input('Categoria', key='prod_categoria')
+    supplier=st.text_input('Fornecedor', key='prod_fornecedor')
+    price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco')
+    stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque')
+    cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
-     db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
-  with st.expander('Importar cadastro de produtos por Excel'):
-   st.caption('Use uma planilha com colunas: codigo, nome, categoria, preco, estoque, comissao. Também aceita: sku, produto, descrição, preço, valor, qtd.')
-   st.download_button('Baixar modelo de produtos', data=gerar_modelo_produtos_excel(), file_name='modelo_produtos_tigrao.xlsx', key='baixar_modelo_produtos')
-   arquivo_produtos = st.file_uploader('Selecionar planilha de produtos', type=['xlsx','xls'], key='upload_cadastro_produtos')
-   if arquivo_produtos is not None:
-    if st.button('Importar produtos agora', key='btn_importar_cadastro_produtos'):
-     try:
-      adicionados, atualizados = importar_produtos_excel(db, arquivo_produtos)
-      save_db(db)
-      st.success(f'Importação concluída: {adicionados} produtos novos e {atualizados} produtos atualizados.')
-      st.rerun()
-     except Exception as e:
-      st.error(f'Erro ao importar produtos: {e}')
- busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
+     if produto_duplicado(db, n):
+      st.error('Produto já cadastrado com esse nome.')
+     else:
+      sku=proximo_codigo(db['products'], campo='sku')
+      db['products'].insert(0,{'id':uid('prod'),'code':sku,'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'supplier':supplier,'commissionRate':cr})
+      save_db(db); st.rerun()
+
+ fornecedores=sorted(list(set([p.get('supplier','Sem fornecedor') or 'Sem fornecedor' for p in db['products']])))
+ fornecedor_filtro=st.selectbox('Filtrar por fornecedor', ['Todos']+fornecedores, key='filtro_fornecedor_produtos')
+ busca=st.text_input('Pesquisar produto por nome ou código', key='busca_produtos')
+
+ produtos_filtrados=[]
  for p in db['products']:
-  if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
-  st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate",db["commissionRate"])}%</div>', unsafe_allow_html=True)
+  fornecedor_produto=p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
+  if fornecedor_filtro!='Todos' and fornecedor_produto!=fornecedor_filtro: continue
+  if busca and not combina_inicio(campos_produto(p), busca): continue
+  produtos_filtrados.append(p)
+
+ if busca and not produtos_filtrados:
+  st.warning('Nenhum produto encontrado.')
+
+ for p in produtos_filtrados:
+  fornecedor_produto=p.get('supplier','Sem fornecedor') or 'Sem fornecedor'
+  codigo=p.get('sku') or p.get('code') or ''
+  with st.expander(f'{codigo} — {p["name"]}'):
+   st.write('Categoria:', p.get('category',''))
+   st.write('Fornecedor:', fornecedor_produto)
+   st.write('Preço:', money(p.get('price',0)))
+   st.write('Estoque:', p.get('stock',0))
+   st.write('Comissão:', f'{p.get("commissionRate",db["commissionRate"])}%')
+
+   if st.session_state.role=='admin':
+    col1,col2=st.columns(2)
+    editar=col1.button('Editar', key='edit_prod_'+p['id'])
+    excluir=col2.button('Excluir', key='del_prod_'+p['id'])
+
+    if excluir:
+     usado=False
+     for o in db.get('orders',[]):
+      for it in o.get('items',[]):
+       if it.get('productId')==p.get('id'):
+        usado=True
+     if usado:
+      st.error('Não é possível excluir: esse produto já foi usado em pedido.')
+     else:
+      db['products']=[x for x in db['products'] if x['id']!=p['id']]
+      save_db(db)
+      st.rerun()
+
+    if editar or st.session_state.get('editando_produto')==p['id']:
+     st.session_state['editando_produto']=p['id']
+     with st.form('form_edit_prod_'+p['id']):
+      novo_nome=st.text_input('Nome', value=p.get('name',''), key='edit_prod_nome_'+p['id'])
+      nova_cat=st.text_input('Categoria', value=p.get('category',''), key='edit_prod_cat_'+p['id'])
+      novo_forn=st.text_input('Fornecedor', value=p.get('supplier',''), key='edit_prod_forn_'+p['id'])
+      novo_preco=st.number_input('Preço', min_value=0.0, value=float(p.get('price',0)), step=.01, key='edit_prod_preco_'+p['id'])
+      novo_estoque=st.number_input('Estoque', min_value=0, value=int(p.get('stock',0)), step=1, key='edit_prod_estoque_'+p['id'])
+      nova_comissao=st.number_input('Comissão %', min_value=0.0, value=float(p.get('commissionRate',db['commissionRate'])), step=.5, key='edit_prod_comissao_'+p['id'])
+      salvar=st.form_submit_button('Salvar edição')
+      cancelar=st.form_submit_button('Cancelar')
+
+     if salvar:
+      repetido=False
+      for outro in db['products']:
+       if outro['id']!=p['id'] and normalizar(outro.get('name',''))==normalizar(novo_nome):
+        repetido=True
+
+      if repetido:
+       st.error('Já existe outro produto com esse nome.')
+      else:
+       p['name']=novo_nome
+       p['category']=nova_cat
+       p['supplier']=novo_forn
+       p['price']=novo_preco
+       p['stock']=novo_estoque
+       p['commissionRate']=nova_comissao
+       save_db(db)
+       st.session_state.pop('editando_produto', None)
+       st.rerun()
+
+     if cancelar:
+      st.session_state.pop('editando_produto', None)
+      st.rerun()
 
 def more_page(db):
  st.subheader('☰ Mais')
  if st.button('Sair', key='btn_sair'): st.session_state.clear(); st.rerun()
- if st.session_state.role!='admin': return
+ if st.session_state.role!='admin':
+  st.info('Área administrativa disponível somente para o administrador.')
+  return
+
  st.markdown('### Vendedores')
  with st.expander('Cadastrar vendedor'):
   with st.form('sales'):
-   n=st.text_input('Nome', key='vend_nome'); em=st.text_input('E-mail', key='vend_email'); cpf=st.text_input('CPF', key='vend_cpf'); ph=st.text_input('Telefone', key='vend_tel'); pw=st.text_input('Senha',value='123', key='vend_senha')
+   n=st.text_input('Nome', key='vend_nome')
+   em=st.text_input('E-mail', key='vend_email')
+   cpf=st.text_input('CPF', key='vend_cpf')
+   ph=st.text_input('Telefone', key='vend_tel')
+   pw=st.text_input('Senha',value='123', key='vend_senha')
+   senha_provisoria=st.checkbox('Senha provisória', value=True, key='vend_senha_provisoria')
    if st.form_submit_button('Salvar vendedor') and n:
-    db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':False}); save_db(db); st.rerun()
+    email_repetido=any(normalizar(v.get('email',''))==normalizar(em) and em for v in db['salespeople'])
+    if email_repetido:
+     st.error('Já existe vendedor com esse e-mail.')
+    else:
+     db['salespeople'].append({'id':uid('sales'),'name':n,'email':em,'active':True,'cpf':cpf,'phone':ph,'address':'','password':pw,'passwordIsTemporary':senha_provisoria})
+     save_db(db); st.rerun()
+
  for s in db['salespeople']:
-  col1,col2=st.columns([3,1]); col1.write(f"**{s['name']}** — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}")
-  if col2.button('Ativar/Inativar', key='a'+s['id']): s['active']=not s.get('active'); save_db(db); st.rerun()
+  with st.expander(f"{s['name']} — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}"):
+   st.write('CPF:', s.get('cpf',''))
+   st.write('Telefone:', s.get('phone',''))
+   st.write('Senha:', 'Provisória' if s.get('passwordIsTemporary') else 'Definitiva')
+
+   col1,col2,col3=st.columns(3)
+   editar=col1.button('Editar', key='edit_vend_'+s['id'])
+   if col2.button('Ativar/Inativar', key='a'+s['id']):
+    s['active']=not s.get('active')
+    save_db(db)
+    st.rerun()
+   excluir=col3.button('Excluir', key='del_vend_'+s['id'])
+
+   if excluir:
+    usado=any(o.get('salespersonId')==s.get('id') for o in db.get('orders',[]))
+    if usado:
+     st.error('Não é possível excluir: esse vendedor possui pedidos cadastrados.')
+    else:
+     db['salespeople']=[x for x in db['salespeople'] if x['id']!=s['id']]
+     save_db(db)
+     st.rerun()
+
+   if editar or st.session_state.get('editando_vendedor')==s['id']:
+    st.session_state['editando_vendedor']=s['id']
+    with st.form('form_edit_vendedor_'+s['id']):
+     novo_nome=st.text_input('Nome', value=s.get('name',''), key='edit_vend_nome_'+s['id'])
+     novo_email=st.text_input('E-mail', value=s.get('email',''), key='edit_vend_email_'+s['id'])
+     novo_cpf=st.text_input('CPF', value=s.get('cpf',''), key='edit_vend_cpf_'+s['id'])
+     novo_tel=st.text_input('Telefone', value=s.get('phone',''), key='edit_vend_tel_'+s['id'])
+     nova_senha=st.text_input('Senha', value=s.get('password','123'), key='edit_vend_senha_'+s['id'])
+     ativo=st.checkbox('Ativo', value=bool(s.get('active',True)), key='edit_vend_ativo_'+s['id'])
+     senha_provisoria_edit=st.checkbox('Senha provisória', value=bool(s.get('passwordIsTemporary',False)), key='edit_vend_senha_provisoria_'+s['id'])
+     salvar=st.form_submit_button('Salvar edição')
+     cancelar=st.form_submit_button('Cancelar')
+
+    if salvar:
+     email_repetido=False
+     for outro in db['salespeople']:
+      if outro['id']!=s['id'] and normalizar(outro.get('email',''))==normalizar(novo_email) and novo_email:
+       email_repetido=True
+
+     if email_repetido:
+      st.error('Já existe outro vendedor com esse e-mail.')
+     else:
+      s['name']=novo_nome
+      s['email']=novo_email
+      s['cpf']=novo_cpf
+      s['phone']=novo_tel
+      s['password']=nova_senha
+      s['passwordIsTemporary']=senha_provisoria_edit
+      s['active']=ativo
+      save_db(db)
+      st.session_state.pop('editando_vendedor', None)
+      st.rerun()
+
+    if cancelar:
+     st.session_state.pop('editando_vendedor', None)
+     st.rerun()
+
+ st.markdown('### Pedidos excluídos')
+ garantir_lixeira(db)
+ if not db.get('deleted_orders'):
+  st.info('Nenhum pedido excluído.')
+ else:
+  for o in db.get('deleted_orders',[]):
+   with st.expander(f"#{o.get('orderNumber','')} — {o.get('clientName','')} — {money(o.get('total',0))}"):
+    st.write('Status original:', o.get('originalStatus', o.get('status','')))
+    st.write('Excluído em:', o.get('deletedAt',''))
+    st.write('Excluído por:', o.get('deletedBy',''))
+    st.write('Motivo:', o.get('deleteReason',''))
+    st.write('Vendedor:', o.get('salespersonName',''))
+    st.dataframe(pd.DataFrame(o.get('items',[])), use_container_width=True, hide_index=True)
+
  st.markdown('### Comissão')
  rate=st.number_input('Comissão geral %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='comissao_geral')
  if st.button('Salvar comissão', key='btn_salvar_comissao'): db['commissionRate']=rate; save_db(db); st.success('Salvo')
+
  st.markdown('### Backup / Importação')
  st.download_button('Baixar backup JSON', data=json.dumps(db,ensure_ascii=False,indent=2).encode('utf-8'), file_name='tigrao_backup.json', key='download_backup_json')
  sheets={'produtos':pd.DataFrame(db['products']),'clientes':pd.DataFrame(db['clients']),'vendedores':pd.DataFrame(db['salespeople']),'pedidos':pd.DataFrame(db['orders'])}
@@ -336,8 +1410,9 @@ def more_page(db):
  if col2.button('Limpar banco', key='btn_limpar_banco'): save_db({'app':'Tigrão Distribuidora','systemName':'TIGRÃO','commissionRate':7,'products':[],'clients':[],'salespeople':INITIAL_SALES[:1],'orders':[]}); st.rerun()
 
 css(); db=load_db()
+garantir_lixeira(db)
 if 'auth' not in st.session_state: st.session_state.auth=False
 if 'tab' not in st.session_state: st.session_state.tab='dashboard'
 if not st.session_state.auth: login(db); st.stop()
-header(db); nav()
+header(db); nav(); tigrinho_salvo()
 {'dashboard':dashboard,'newOrder':new_order,'orders':orders_page,'clients':clients_page,'products':products_page,'more':more_page}[st.session_state.tab](db)
