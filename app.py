@@ -2,6 +2,11 @@ import json, os, uuid
 from datetime import datetime
 from io import BytesIO
 import pandas as pd
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 import streamlit as st
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
@@ -168,6 +173,66 @@ def new_order(db):
      if p['id']==it['productId']: p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
    save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
 
+
+
+def gerar_pdf_pedido(db, pedido):
+    buffer=BytesIO()
+    doc=SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.2*cm, leftMargin=1.2*cm, topMargin=1.2*cm, bottomMargin=1.2*cm)
+    styles=getSampleStyleSheet()
+    elems=[]
+
+    cliente=next((c for c in db.get('clients',[]) if c.get('id')==pedido.get('clientId')), {})
+
+    elems.append(Paragraph('<b>TIGRÃO DISTRIBUIDORA</b>', styles['Title']))
+    elems.append(Paragraph(f"Pedido #{pedido.get('orderNumber','')}", styles['Heading2']))
+    elems.append(Spacer(1, 8))
+
+    info=[
+        ['Cliente', pedido.get('clientName','')],
+        ['Documento', cliente.get('document','')],
+        ['Telefone', cliente.get('phone','')],
+        ['Cidade', f"{cliente.get('city','')} / {cliente.get('state','')}"],
+        ['Vendedor', pedido.get('salespersonName','')],
+        ['Data', str(pedido.get('date','')).replace('T',' ')],
+        ['Status', pedido.get('status','')],
+    ]
+    t=Table(info, colWidths=[3.2*cm, 13*cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f3f4f6')),
+        ('TEXTCOLOR',(0,0),(0,-1),colors.HexColor('#111111')),
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
+        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('PADDING',(0,0),(-1,-1),6),
+    ]))
+    elems.append(t)
+    elems.append(Spacer(1, 14))
+
+    dados=[['Produto','Qtd','Preço','Total']]
+    for it in pedido.get('items',[]):
+        qtd=float(it.get('quantity',0)); preco=float(it.get('price',0)); total=qtd*preco
+        dados.append([it.get('productName',''), str(int(qtd) if qtd.is_integer() else qtd), money(preco), money(total)])
+    dados.append(['','','TOTAL',money(pedido.get('total',0))])
+    tab=Table(dados, colWidths=[9.2*cm,2*cm,2.7*cm,2.7*cm])
+    tab.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#111111')),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
+        ('ALIGN',(1,1),(-1,-1),'RIGHT'),
+        ('FONTNAME',(2,-1),(-1,-1),'Helvetica-Bold'),
+        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#fff7ed')),
+        ('PADDING',(0,0),(-1,-1),6),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+    ]))
+    elems.append(tab)
+    elems.append(Spacer(1, 18))
+    elems.append(Paragraph('Obrigado pela preferência.', styles['Normal']))
+    elems.append(Paragraph('Este documento é uma cópia do pedido para conferência do cliente.', styles['Normal']))
+    doc.build(elems)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 def orders_page(db):
  st.subheader('📦 Pedidos')
  busca=st.text_input('Pesquisar pedido, cliente ou vendedor', key='busca_pedidos')
@@ -177,6 +242,8 @@ def orders_page(db):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
    st.write('Comissão:', money(o.get('commissionAmount',0)))
+   pdf=gerar_pdf_pedido(db, o)
+   st.download_button('📄 Baixar/compartilhar PDF do pedido', data=pdf, file_name=f'pedido_{o["orderNumber"]}_tigrao.pdf', mime='application/pdf', key='pdf_'+o['id'])
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
@@ -203,23 +270,6 @@ def products_page(db):
     sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
      db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
-
-  with st.expander('Importar cadastro de produtos por Excel'):
-   st.caption('Colunas aceitas: codigo/SKU, nome/produto, categoria, preco, estoque, comissao.')
-   modelo_prod=BytesIO()
-   with pd.ExcelWriter(modelo_prod, engine='openpyxl') as writer:
-    pd.DataFrame(columns=['codigo','nome','categoria','preco','estoque','comissao']).to_excel(writer,index=False,sheet_name='produtos')
-   st.download_button('Baixar modelo de produtos', data=modelo_prod.getvalue(), file_name='modelo_produtos_tigrao.xlsx', key='download_modelo_produtos_tela')
-   arquivo_prod=st.file_uploader('Escolher planilha de produtos', type=['xlsx'], key='upload_produtos_tela')
-   if arquivo_prod and st.button('Importar produtos agora', key='btn_importar_produtos_tela'):
-    try:
-     add,upd=importar_produtos_excel(db, arquivo_prod)
-     save_db(db)
-     st.success(f'Produtos importados: {add} novos e {upd} atualizados.')
-     st.rerun()
-    except Exception as e:
-     st.error(f'Erro ao importar produtos: {e}')
-
  busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
  for p in db['products']:
   if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
@@ -329,13 +379,13 @@ def more_page(db):
   pd.DataFrame(columns=['codigo','nome','categoria','preco','estoque','comissao']).to_excel(writer,index=False,sheet_name='produtos')
   pd.DataFrame(columns=['nome','cpf/cnpj','email','telefone','cidade','estado']).to_excel(writer,index=False,sheet_name='clientes')
  st.download_button('Baixar modelo Excel', data=modelo.getvalue(), file_name='modelo_importacao_tigrao.xlsx', key='download_modelo_importacao')
- up_prod=st.file_uploader('Importar produtos Excel', type=['xlsx'], key='upload_produtos_excel')
+ up_prod=st.file_uploader('Importar produtos Excel', type=['xlsx','xls'], key='upload_produtos_excel')
  if up_prod and st.button('Cadastrar produtos da planilha', key='btn_importar_produtos_excel'):
   try:
    add,upd=importar_produtos_excel(db, up_prod); save_db(db); st.success(f'Produtos importados: {add} novos e {upd} atualizados.'); st.rerun()
   except Exception as e:
    st.error(str(e))
- up_cli=st.file_uploader('Importar clientes Excel', type=['xlsx'], key='upload_clientes_excel')
+ up_cli=st.file_uploader('Importar clientes Excel', type=['xlsx','xls'], key='upload_clientes_excel')
  if up_cli and st.button('Cadastrar clientes da planilha', key='btn_importar_clientes_excel'):
   try:
    add,upd=importar_clientes_excel(db, up_cli); save_db(db); st.success(f'Clientes importados: {add} novos e {upd} atualizados.'); st.rerun()
