@@ -78,7 +78,7 @@ def proximo_codigo(lista, campo='code'):
     nums.append(int(n))
    except:
     pass
- return str(max(nums, default=0)+1)
+ return f"{max(nums, default=0)+1:03d}"
 
 def proximo_pedido(orders):
  nums=[]
@@ -160,7 +160,11 @@ def sugestoes_inicio(lista, campos, busca, limite=8):
  return achados[:limite]
 
 def codigo_cliente(c):
- return c.get('code') or c.get('codigo') or c.get('id','').replace('cli-','')
+ cod=c.get('code') or c.get('codigo') or c.get('id','').replace('cli-','')
+ n=so_numeros(cod)
+ if n:
+  return f"{int(n):03d}"
+ return cod
 
 def campos_cliente(c):
  return [codigo_cliente(c), c.get('name',''), c.get('document','')]
@@ -529,6 +533,105 @@ def css():
    }
  }
 
+ 
+ /* AJUSTES GERAIS MOBILE - CLIENTES / PRODUTOS / VENDEDORES */
+ [data-testid="stExpander"]{
+   background:#fff!important;
+   border:1px solid #eee!important;
+   border-radius:18px!important;
+   overflow:hidden!important;
+   box-shadow:0 4px 18px rgba(0,0,0,.03)!important;
+   margin-bottom:10px!important;
+ }
+
+ [data-testid="stExpander"] details summary{
+   background:#fff!important;
+   color:#111!important;
+   min-height:52px!important;
+   padding:12px 14px!important;
+   font-size:17px!important;
+   font-weight:800!important;
+ }
+
+ [data-testid="stExpander"] details summary *{
+   color:#111!important;
+ }
+
+ [data-testid="stExpander"] [data-testid="stVerticalBlock"]{
+   background:#fff!important;
+   color:#111!important;
+ }
+
+ div[class*="st-key-edit_"] button{
+   background:#2563eb!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ div[class*="st-key-del_"] button,
+ div[class*="st-key-excluir_item_temp_"] button{
+   background:#ef4444!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ div[class*="st-key-a"] button{
+   background:#f59e0b!important;
+   color:#111!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ .st-key-btn_buscar_cnpj_cliente button{
+   background:#fb923c!important;
+   color:#111!important;
+   border:0!important;
+ }
+
+ .st-key-btn_salvar_pedido_final button{
+   background:#fb923c!important;
+   color:#fff!important;
+   border:0!important;
+   width:100%!important;
+ }
+
+ .st-key-btn_limpar_pedido_temp button{
+   background:#fff!important;
+   color:#ea580c!important;
+   border:2px solid #fb923c!important;
+   width:100%!important;
+ }
+
+ .st-key-bottom_nav .stButton>button{
+   font-size:10px!important;
+   line-height:1.05!important;
+   white-space:pre-line!important;
+ }
+
+ @media(max-width:640px){
+   .stButton>button{
+     min-height:52px!important;
+     font-size:16px!important;
+   }
+
+   [data-testid="stExpander"] details summary{
+     font-size:16px!important;
+   }
+
+   .st-key-bottom_nav .stButton>button{
+     font-size:10px!important;
+     height:60px!important;
+     min-height:60px!important;
+     padding:1px 0!important;
+   }
+
+   .block-container{
+     padding-bottom:122px!important;
+   }
+ }
+
  </style>''', unsafe_allow_html=True)
 
 def header(db):
@@ -612,7 +715,7 @@ def tigrinho_salvo():
 
 
 def nav():
- tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','•••','Mais')]
+ tabs=[('dashboard','🏠','Início'),('newOrder','➕','Novo'),('orders','📦','Pedidos'),('clients','👥','Cliente'),('products','🛒','Prod.'),('more','•••','Mais')]
 
  st.markdown('''
  <style>
@@ -721,21 +824,36 @@ def nav():
     st.rerun()
 
 def login(db):
- st.markdown('<div style="height:40px"></div><div class="card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
+ st.markdown('<div style="height:28px"></div><div class="card login-card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
+
  with st.form('login'):
-  perfil=st.radio('Perfil',['Admin','Vendedor'], horizontal=True)
   usuario=st.text_input('Usuário / e-mail', key='login_usuario')
   senha=st.text_input('Senha', type='password', key='login_senha')
   ok=st.form_submit_button('Entrar')
+
  if ok:
-  if perfil=='Admin' and usuario.lower() in ['admin','administrador',''] and senha=='admin123':
-   st.session_state.auth=True; st.session_state.role='admin'; st.session_state.sales_id=''; st.session_state.user_name='Administrador'; st.rerun()
+  usuario_limpo=usuario.lower().strip()
+
+  if usuario_limpo in ['admin','administrador'] and senha=='admin123':
+   st.session_state.auth=True
+   st.session_state.role='admin'
+   st.session_state.sales_id=''
+   st.session_state.user_name='Administrador'
+   st.rerun()
+
   sellers=[s for s in db['salespeople'] if s.get('active')]
-  seller=next((s for s in sellers if usuario.lower() in [s['email'].lower(), s['name'].lower()] and senha==s.get('password','123')),None)
-  if perfil=='Vendedor' and seller:
-   st.session_state.auth=True; st.session_state.role='vendedor'; st.session_state.sales_id=seller['id']; st.session_state.user_name=seller['name']; st.rerun()
+  seller=next((s for s in sellers if usuario_limpo in [s.get('email','').lower(), s.get('name','').lower()] and senha==s.get('password','123')),None)
+
+  if seller:
+   st.session_state.auth=True
+   st.session_state.role='vendedor'
+   st.session_state.sales_id=seller['id']
+   st.session_state.user_name=seller['name']
+   st.rerun()
+
   st.error('Login ou senha inválidos')
- st.info('Admin: admin / admin123   |   Vendedor: vendedor@tigrao.com / 123')
+
+ st.info('Admin: admin / admin123   |   Vendedor: e-mail cadastrado / senha cadastrada')
 
 def filtered_orders(db):
  orders=db.get('orders',[])
@@ -984,7 +1102,7 @@ def clients_page(db):
      save_db(db)
      st.rerun()
 
- busca=st.text_input('Pesquisar cliente por nome, código ou CNPJ/CPF', key='busca_clientes')
+ busca=st.text_input('Pesquisar cliente', key='busca_clientes', placeholder='Nome, código ou CNPJ/CPF')
  encontrados=[c for c in db['clients'] if combina_inicio(campos_cliente(c), busca)] if busca else db['clients']
 
  if busca and not encontrados:
