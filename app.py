@@ -155,60 +155,30 @@ def gerar_modelo_produtos_excel():
 def css():
  st.markdown('''<style>
  header, footer, [data-testid="stSidebar"] {display:none!important}.block-container{max-width:520px!important;padding:14px 14px 98px!important}.stApp{background:#fafafa;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#111;color:#fff;border-radius:0 0 28px 28px;padding:22px;margin:-14px -14px 16px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:12px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:24px;padding:16px}.metric b{font-size:24px}.pill{border-radius:999px;padding:6px 10px;background:#fff7ed;color:#ea580c;font-weight:900;font-size:11px}.nav{position:fixed;bottom:0;left:0;right:0;background:#111;z-index:999;padding:8px 5px 12px;display:flex;justify-content:center;gap:4px}.nav button{min-width:64px;border:0;background:#111;color:#eee;border-radius:18px;padding:8px 6px;font-size:11px;font-weight:800}.nav .on{background:#f97316;color:#111}.status{font-weight:900;border-radius:999px;padding:4px 8px;font-size:11px}.stButton>button{border-radius:16px!important;font-weight:900!important;min-height:44px}.stTextInput input,.stNumberInput input,.stSelectbox div{border-radius:14px!important}
-/* Correção visual do login no celular */
-label, .stRadio label, .stTextInput label, .stPassword label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#171717!important;font-weight:800!important;}
-.stTextInput input {background:#ffffff!important;color:#171717!important;border:1px solid #ddd!important;}
-.stTextInput input::placeholder {color:#777!important;}
-.stFormSubmitButton button {background:#f97316!important;color:#111!important;border:0!important;}
-button[kind="secondary"] {color:#171717!important;}
-.stAlert {border-radius:16px!important;}
-[data-testid="stStatusWidget"], [data-testid="stDecoration"] {display:none!important;}
-</style>''', unsafe_allow_html=True)
+ /* Correção visual do login no celular */
+ label, .stRadio label, .stTextInput label, .stPassword label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] p {color:#171717!important;font-weight:800!important;}
+ .stTextInput input {background:#ffffff!important;color:#171717!important;border:1px solid #ddd!important;}
+ .stTextInput input::placeholder {color:#777!important;}
+ .stFormSubmitButton button {background:#f97316!important;color:#111!important;border:0!important;}
+ button[kind="secondary"] {color:#171717!important;}
+ .stAlert {border-radius:16px!important;}
+ [data-testid="stStatusWidget"], [data-testid="stDecoration"] {display:none!important;}
+ </style>''', unsafe_allow_html=True)
 
 def header(db):
  user=st.session_state.get('user_name','')
  st.markdown(f'''<div class="top"><div class="brand"><div class="logo">🐯</div><div><div class="sub">DISTRIBUIDORA</div><div class="title">{db.get('systemName','TIGRÃO')}</div><div style="color:#aaa;font-size:12px">{user}</div></div></div></div>''', unsafe_allow_html=True)
 
 def nav():
- # IMPORTANTE: não usamos mais HTML <form> aqui.
- # O <form> fazia a página recarregar no celular e o Streamlit perdia o login.
  tabs=[('dashboard','🏠','Início'),('newOrder','➕','Pedido'),('orders','📦','Pedidos'),('clients','👥','Clientes'),('products','🛒','Produtos'),('more','☰','Mais')]
-
  st.markdown('''
  <style>
- .st-key-bottom_nav {
-   position: fixed !important;
-   left: 0 !important;
-   right: 0 !important;
-   bottom: 0 !important;
-   z-index: 999999 !important;
-   background: #111 !important;
-   padding: 8px 5px 12px 5px !important;
-   border-top: 1px solid #222 !important;
- }
- .st-key-bottom_nav [data-testid="stHorizontalBlock"] {
-   max-width: 520px !important;
-   margin: auto !important;
-   gap: 4px !important;
- }
- .st-key-bottom_nav .stButton > button {
-   width: 100% !important;
-   min-height: 54px !important;
-   border: 0 !important;
-   border-radius: 18px !important;
-   background: #111 !important;
-   color: #eee !important;
-   font-size: 11px !important;
-   font-weight: 900 !important;
-   padding: 4px 2px !important;
- }
- .st-key-bottom_nav .stButton > button[kind="primary"] {
-   background: #f97316 !important;
-   color: #111 !important;
- }
+ .st-key-bottom_nav {position: fixed !important;left: 0 !important;right: 0 !important;bottom: 0 !important;z-index: 999999 !important;background: #111 !important;padding: 8px 5px 12px 5px !important;border-top: 1px solid #222 !important;}
+ .st-key-bottom_nav [data-testid="stHorizontalBlock"] {max-width: 520px !important;margin: auto !important;gap: 4px !important;}
+ .st-key-bottom_nav .stButton > button {width: 100% !important;min-height: 54px !important;border: 0 !important;border-radius: 18px !important;background: #111 !important;color: #eee !important;font-size: 11px !important;font-weight: 900 !important;padding: 4px 2px !important;}
+ .st-key-bottom_nav .stButton > button[kind="primary"] {background: #f97316 !important;color: #111 !important;}
  </style>
  ''', unsafe_allow_html=True)
-
  with st.container(key='bottom_nav'):
   cols=st.columns(6)
   for col,(key,ico,label) in zip(cols,tabs):
@@ -220,19 +190,27 @@ def nav():
 def login(db):
  st.markdown('<div style="height:40px"></div><div class="card" style="text-align:center"><div style="font-size:64px">🐯</div><h1>TIGRÃO</h1><b>Acesso ao sistema</b></div>', unsafe_allow_html=True)
  with st.form('login'):
-  perfil=st.radio('Perfil',['Admin','Vendedor'], horizontal=True)
-  usuario=st.text_input('Usuário / e-mail', key='login_usuario')
-  senha=st.text_input('Senha', type='password', key='login_senha')
+  perfil=st.radio('Perfil',['Admin','Vendedor'], horizontal=True, key='login_perfil')
+  usuario=st.text_input('Usuário / e-mail', value='', key='login_usuario_novo')
+  senha=st.text_input('Senha', value='', type='password', key='login_senha_nova')
   ok=st.form_submit_button('Entrar')
  if ok:
-  if perfil=='Admin' and usuario.lower() in ['admin','administrador',''] and senha=='admin123':
-   st.session_state.auth=True; st.session_state.role='admin'; st.session_state.sales_id=''; st.session_state.user_name='Administrador'; st.rerun()
+  usuario_limpo = usuario.strip().lower()
+  if perfil=='Admin' and usuario_limpo in ['admin','administrador'] and senha=='admin123':
+   st.session_state.auth=True
+   st.session_state.role='admin'
+   st.session_state.sales_id=''
+   st.session_state.user_name='Administrador'
+   st.rerun()
   sellers=[s for s in db['salespeople'] if s.get('active')]
-  seller=next((s for s in sellers if usuario.lower() in [s['email'].lower(), s['name'].lower()] and senha==s.get('password','123')),None)
+  seller=next((s for s in sellers if usuario_limpo in [s['email'].lower(), s['name'].lower()] and senha==s.get('password','123')),None)
   if perfil=='Vendedor' and seller:
-   st.session_state.auth=True; st.session_state.role='vendedor'; st.session_state.sales_id=seller['id']; st.session_state.user_name=seller['name']; st.rerun()
+   st.session_state.auth=True
+   st.session_state.role='vendedor'
+   st.session_state.sales_id=seller['id']
+   st.session_state.user_name=seller['name']
+   st.rerun()
   st.error('Login ou senha inválidos')
- st.info('Admin: admin / admin123   |   Vendedor: vendedor@tigrao.com / 123')
 
 def filtered_orders(db):
  orders=db['orders']
@@ -309,7 +287,6 @@ def products_page(db):
     sku=st.text_input('Código/SKU', key='prod_sku'); n=st.text_input('Nome', key='prod_nome'); cat=st.text_input('Categoria', key='prod_categoria'); price=st.number_input('Preço',min_value=0.0,step=.01,key='prod_preco'); stock=st.number_input('Estoque',min_value=0,step=1,key='prod_estoque'); cr=st.number_input('Comissão %',min_value=0.0,value=float(db['commissionRate']),step=.5,key='prod_comissao')
     if st.form_submit_button('Salvar produto') and n:
      db['products'].insert(0,{'id':uid('prod'),'name':n,'sku':sku,'price':price,'stock':stock,'category':cat,'commissionRate':cr}); save_db(db); st.rerun()
-
   with st.expander('Importar cadastro de produtos por Excel'):
    st.caption('Use uma planilha com colunas: codigo, nome, categoria, preco, estoque, comissao. Também aceita: sku, produto, descrição, preço, valor, qtd.')
    st.download_button('Baixar modelo de produtos', data=gerar_modelo_produtos_excel(), file_name='modelo_produtos_tigrao.xlsx', key='baixar_modelo_produtos')
@@ -323,7 +300,6 @@ def products_page(db):
       st.rerun()
      except Exception as e:
       st.error(f'Erro ao importar produtos: {e}')
-
  busca=st.text_input('Pesquisar produto por código, nome ou categoria', key='busca_produtos')
  for p in db['products']:
   if busca and busca.lower() not in json.dumps(p,ensure_ascii=False).lower(): continue
