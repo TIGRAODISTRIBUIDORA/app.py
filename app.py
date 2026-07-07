@@ -2,6 +2,11 @@ import json, os, uuid
 from datetime import datetime
 from io import BytesIO
 import pandas as pd
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 import streamlit as st
 
 st.set_page_config(page_title="Tigrão Distribuidora", page_icon="🐯", layout="centered", initial_sidebar_state="collapsed")
@@ -168,6 +173,66 @@ def new_order(db):
      if p['id']==it['productId']: p['stock']=max(0,int(p.get('stock',0))-it['quantity'])
    save_db(db); st.success('Pedido salvo com sucesso'); st.session_state.tab='orders'; st.rerun()
 
+
+
+def gerar_pdf_pedido(db, pedido):
+    buffer=BytesIO()
+    doc=SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.2*cm, leftMargin=1.2*cm, topMargin=1.2*cm, bottomMargin=1.2*cm)
+    styles=getSampleStyleSheet()
+    elems=[]
+
+    cliente=next((c for c in db.get('clients',[]) if c.get('id')==pedido.get('clientId')), {})
+
+    elems.append(Paragraph('<b>TIGRÃO DISTRIBUIDORA</b>', styles['Title']))
+    elems.append(Paragraph(f"Pedido #{pedido.get('orderNumber','')}", styles['Heading2']))
+    elems.append(Spacer(1, 8))
+
+    info=[
+        ['Cliente', pedido.get('clientName','')],
+        ['Documento', cliente.get('document','')],
+        ['Telefone', cliente.get('phone','')],
+        ['Cidade', f"{cliente.get('city','')} / {cliente.get('state','')}"],
+        ['Vendedor', pedido.get('salespersonName','')],
+        ['Data', str(pedido.get('date','')).replace('T',' ')],
+        ['Status', pedido.get('status','')],
+    ]
+    t=Table(info, colWidths=[3.2*cm, 13*cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#f3f4f6')),
+        ('TEXTCOLOR',(0,0),(0,-1),colors.HexColor('#111111')),
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
+        ('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('PADDING',(0,0),(-1,-1),6),
+    ]))
+    elems.append(t)
+    elems.append(Spacer(1, 14))
+
+    dados=[['Produto','Qtd','Preço','Total']]
+    for it in pedido.get('items',[]):
+        qtd=float(it.get('quantity',0)); preco=float(it.get('price',0)); total=qtd*preco
+        dados.append([it.get('productName',''), str(int(qtd) if qtd.is_integer() else qtd), money(preco), money(total)])
+    dados.append(['','','TOTAL',money(pedido.get('total',0))])
+    tab=Table(dados, colWidths=[9.2*cm,2*cm,2.7*cm,2.7*cm])
+    tab.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#111111')),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#dddddd')),
+        ('ALIGN',(1,1),(-1,-1),'RIGHT'),
+        ('FONTNAME',(2,-1),(-1,-1),'Helvetica-Bold'),
+        ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#fff7ed')),
+        ('PADDING',(0,0),(-1,-1),6),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+    ]))
+    elems.append(tab)
+    elems.append(Spacer(1, 18))
+    elems.append(Paragraph('Obrigado pela preferência.', styles['Normal']))
+    elems.append(Paragraph('Este documento é uma cópia do pedido para conferência do cliente.', styles['Normal']))
+    doc.build(elems)
+    buffer.seek(0)
+    return buffer.getvalue()
+
 def orders_page(db):
  st.subheader('📦 Pedidos')
  busca=st.text_input('Pesquisar pedido, cliente ou vendedor', key='busca_pedidos')
@@ -177,6 +242,8 @@ def orders_page(db):
    st.write('Vendedor:',o['salespersonName']); st.write('Data:',o['date'])
    st.dataframe(pd.DataFrame(o['items']), use_container_width=True, hide_index=True)
    st.write('Comissão:', money(o.get('commissionAmount',0)))
+   pdf=gerar_pdf_pedido(db, o)
+   st.download_button('📄 Baixar/compartilhar PDF do pedido', data=pdf, file_name=f'pedido_{o["orderNumber"]}_tigrao.pdf', mime='application/pdf', key='pdf_'+o['id'])
    if st.session_state.role=='admin':
     ns=st.selectbox('Status', STATUS, index=STATUS.index(o['status']), key='st'+o['id'])
     col1,col2=st.columns(2)
