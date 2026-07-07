@@ -900,15 +900,43 @@ def new_order(db):
  if 'pedido_itens_temp' not in st.session_state:
   st.session_state.pedido_itens_temp=[]
 
+ if 'pedido_cliente_id' not in st.session_state:
+  st.session_state.pedido_cliente_id=''
+
  st.markdown('### Cliente')
 
- # Campo único: o próprio selectbox permite pesquisar digitando.
- c=st.selectbox(
-  'Cliente',
-  clients,
-  format_func=lambda x:x['name'],
-  key='pedido_cliente'
+ busca_cliente=st.text_input(
+  'Buscar cliente',
+  key='pedido_busca_cliente_digitavel',
+  placeholder='Digite nome, código ou CNPJ'
  )
+
+ clientes_encontrados=[]
+ if busca_cliente:
+  clientes_encontrados=[c for c in clients if combina_inicio(campos_cliente(c), busca_cliente)][:8]
+ else:
+  clientes_encontrados=[]
+
+ if busca_cliente and not clientes_encontrados:
+  st.warning('Nenhum cliente encontrado.')
+
+ if clientes_encontrados:
+  st.caption('Toque no cliente para selecionar')
+  for c_item in clientes_encontrados:
+   cod=codigo_cliente(c_item)
+   if st.button(f'{cod} — {c_item["name"]}', key='selecionar_cliente_'+c_item['id']):
+    st.session_state.pedido_cliente_id=c_item['id']
+    st.rerun()
+
+ c=next((cli for cli in clients if cli.get('id')==st.session_state.get('pedido_cliente_id','')), None)
+
+ if c:
+  st.markdown(
+   f'<div class="card"><b>Cliente selecionado</b><br>{codigo_cliente(c)} — {c["name"]}<br>{c.get("document","")}</div>',
+   unsafe_allow_html=True
+  )
+ else:
+  st.info('Digite e selecione um cliente para continuar.')
 
  if st.session_state.role=='admin':
   s=st.selectbox('Vendedor', [x for x in sales if x.get('active')], format_func=lambda x:x['name'], key='pedido_vendedor')
@@ -919,7 +947,6 @@ def new_order(db):
 
  st.markdown('### Produto')
 
- # Campo único: o próprio selectbox permite pesquisar digitando.
  p=st.selectbox(
   'Produto',
   [None]+products,
@@ -967,7 +994,9 @@ def new_order(db):
  if col1.button('Salvar pedido', key='btn_salvar_pedido_final'):
   items=st.session_state.pedido_itens_temp
 
-  if not items:
+  if not c:
+   st.error('Selecione um cliente.')
+  elif not items:
    st.error('Adicione pelo menos 1 produto.')
   else:
    total=sum(it['quantity']*it['price'] for it in items)
@@ -999,6 +1028,7 @@ def new_order(db):
 
    save_db(db)
    st.session_state.pedido_itens_temp=[]
+   st.session_state.pedido_cliente_id=''
    st.session_state.show_tigrinho_salvo=True
    st.success('Pedido salvo com sucesso')
    st.session_state.tab='orders'
@@ -1006,6 +1036,7 @@ def new_order(db):
 
  if col2.button('Limpar pedido', key='btn_limpar_pedido_temp'):
   st.session_state.pedido_itens_temp=[]
+  st.session_state.pedido_cliente_id=''
   st.rerun()
 
 def orders_page(db):
