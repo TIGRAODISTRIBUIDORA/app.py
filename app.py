@@ -4,6 +4,7 @@ import os
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO
+from urllib.parse import quote
 
 import pandas as pd
 import requests
@@ -288,7 +289,6 @@ def gerar_pdf_pedido(o, cli):
     cep = so_numeros(cli.get("zip", "") if cli else "")
     documento = so_numeros(cli.get("document", "") if cli else "")
 
-    # Cabeçalho
     draw_text(c, 100, y, "TIGRAO DISTRIBUIDORA DE PRODUTOS NATURAL", 10, True)
     draw_text(c, 420, y, "Pagina:", 10)
     draw_text(c, 485, y, "1", 10)
@@ -303,7 +303,6 @@ def gerar_pdf_pedido(o, cli):
     draw_text(c, 225, y, "***DOCUMENTO SEM VALOR FISCAL***", 9, True)
     y -= 18
 
-    # Dados principais
     col_a, col_b, col_c = 40, 285, 430
     draw_text(c, col_a, y, "Romaneio:", 7, True); draw_text(c, col_a + 50, y, "00000", 7)
     draw_text(c, col_a + 95, y, "Repres.:", 7); draw_text(c, col_a + 135, y, vendedor_cod, 7); draw_text(c, col_a + 160, y, vendedor_nome[:18], 7)
@@ -338,7 +337,6 @@ def gerar_pdf_pedido(o, cli):
     line(c, left, y, right, y, .8)
     y -= 12
 
-    # Tabela de itens
     headers = [(40, "Quant"), (72, "Un"), (96, "Código"), (128, "Descrição do produto"), (280, "Qtd.Emb"), (340, "Apresentação"), (410, "Tabela"), (450, "Preço"), (493, "% Desc"), (537, "Prunit"), (574, "Total")]
     for x, txt in headers:
         draw_text(c, x, y, txt, 7, True)
@@ -381,7 +379,6 @@ def gerar_pdf_pedido(o, cli):
     y -= 20
     draw_text(c, 405, y, "Total do Pedido:", 10, True); draw_text(c, 545, y, money_pdf(total_pedido), 10)
 
-    # Controle interno
     y = 250
     c.setDash(3, 2)
     line(c, left, y, 265, y, .8)
@@ -434,12 +431,23 @@ def pdf_preview(pdf_bytes, height=760):
     )
 
 
+def link_whatsapp_pedido(o, cli):
+    pedido_num = f"{int(o.get('orderNumber', 0)):06d}"
+    texto = (
+        f"Olá! Segue o pedido #{pedido_num} da Tigrão Distribuidora.\n"
+        f"Cliente: {o.get('clientName', '')}\n"
+        f"Total: {money(o.get('total', 0))}\n\n"
+        "Vou anexar o PDF do pedido nesta conversa."
+    )
+    return "https://wa.me/?text=" + quote(texto)
+
+
 def visualizar_pdf_area(o, cli):
     pdf = gerar_pdf_pedido(o, cli)
     c1, c2 = st.columns(2)
     c1.download_button("📄 Baixar PDF", data=pdf, file_name=f"pedido_{o.get('orderNumber','')}.pdf", mime="application/pdf", key="baixar_pdf_" + o["id"])
-    c2.download_button("📤 Compartilhar", data=pdf, file_name=f"pedido_{o.get('orderNumber','')}.pdf", mime="application/pdf", key="compartilhar_pdf_" + o["id"])
-    st.caption("No celular, toque em Compartilhar/Baixar e escolha WhatsApp, e-mail ou outro aplicativo.")
+    c2.link_button("📲 Abrir WhatsApp", link_whatsapp_pedido(o, cli), use_container_width=True)
+    st.caption("O WhatsApp abre com a mensagem pronta. Depois toque no clipe/anexo e envie o PDF baixado.")
     pdf_preview(pdf)
 
 
@@ -447,7 +455,7 @@ def css():
     st.markdown(
         '''<style>
  header, footer, [data-testid="stSidebar"] {display:none!important}
- .block-container{max-width:520px!important;padding:8px 18px 122px!important}.stApp{background:#fff!important;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#050505!important;color:#fff;border-radius:0 0 26px 26px!important;padding:20px;margin:-8px -18px 18px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:10px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:22px;padding:12px 16px;min-height:78px}.metric b{font-size:20px}.stButton>button{min-height:52px!important;border-radius:18px!important;font-size:16px!important;font-weight:900!important}.stTextInput input,.stNumberInput input{background:#fff!important;color:#111!important;border:1.8px solid #fb923c!important;border-radius:16px!important;min-height:56px!important;font-size:17px!important}div[data-baseweb="select"]>div{background:#fff!important;border:1.8px solid #fb923c!important;border-radius:16px!important;min-height:56px!important;color:#111!important}.stSelectbox label,.stTextInput label,.stNumberInput label{font-size:18px!important;font-weight:800!important;color:#111!important}.st-key-btn_salvar_pedido_final button,.st-key-btn_buscar_cnpj_cliente button{background:#fb923c!important;color:#fff!important;border:0!important;width:100%!important}.st-key-btn_add_produto_pedido button{background:#fdba74!important;color:#111!important;border:0!important}div[class*="st-key-excluir_item_temp_"] button,div[class*="st-key-del_"] button{background:#ef4444!important;color:#fff!important;border:0!important;width:100%!important}div[class*="st-key-edit_"] button{background:#2563eb!important;color:#fff!important;border:0!important;width:100%!important}div[class*="st-key-a"] button{background:#f59e0b!important;color:#111!important;border:0!important;width:100%!important}[data-testid="stExpander"]{background:#fff!important;border:1px solid #eee!important;border-radius:18px!important;overflow:hidden!important;box-shadow:0 4px 18px rgba(0,0,0,.03)!important;margin-bottom:10px!important}[data-testid="stExpander"] details summary{background:#fff!important;color:#111!important;min-height:52px!important;padding:12px 14px!important;font-size:16px!important;font-weight:800!important}.st-key-bottom_nav{position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:999999!important;background:#111!important;height:70px!important;padding:4px 2px calc(4px + env(safe-area-inset-bottom)) 2px!important;border-top:1px solid #222!important;overflow:hidden!important}.st-key-bottom_nav [data-testid="stHorizontalBlock"]{width:100vw!important;max-width:100vw!important;height:60px!important;margin:0 auto!important;display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:1px!important;align-items:center!important}.st-key-bottom_nav [data-testid="column"]{width:100%!important;min-width:0!important;max-width:none!important;padding:0!important;flex:none!important}.st-key-bottom_nav .stButton>button{width:100%!important;min-width:0!important;height:56px!important;min-height:56px!important;border:0!important;border-radius:14px!important;background:#111!important;color:#eee!important;font-size:9px!important;font-weight:900!important;padding:1px 0!important;line-height:1.05!important;white-space:pre-line!important;overflow:hidden!important;text-align:center!important}.st-key-bottom_nav .stButton>button[kind="primary"]{background:#f97316!important;color:#111!important}.stDownloadButton>button{background:#fb923c!important;color:#111!important;border:0!important;width:100%!important;border-radius:18px!important;font-weight:900!important;min-height:56px!important}.pdf-box{background:white;border-radius:24px;padding:12px;border:1px solid #eee;box-shadow:0 8px 24px rgba(0,0,0,.05)}
+ .block-container{max-width:520px!important;padding:8px 18px 122px!important}.stApp{background:#fff!important;color:#171717}*{font-family:Inter,Arial,sans-serif}.top{background:#050505!important;color:#fff;border-radius:0 0 26px 26px!important;padding:20px;margin:-8px -18px 18px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;background:#f97316;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:28px}.title{font-size:26px;font-weight:900}.sub{color:#fb923c;font-size:11px;font-weight:900;letter-spacing:2px}.card{background:white;border:1px solid #eee;border-radius:24px;padding:16px;margin:10px 0;box-shadow:0 8px 24px rgba(0,0,0,.05)}.metric{background:#111;color:#fff;border-radius:22px;padding:12px 16px;min-height:78px}.metric b{font-size:20px}.stButton>button{min-height:52px!important;border-radius:18px!important;font-size:16px!important;font-weight:900!important}.stTextInput input,.stNumberInput input{background:#fff!important;color:#111!important;border:1.8px solid #fb923c!important;border-radius:16px!important;min-height:56px!important;font-size:17px!important}div[data-baseweb="select"]>div{background:#fff!important;border:1.8px solid #fb923c!important;border-radius:16px!important;min-height:56px!important;color:#111!important}.stSelectbox label,.stTextInput label,.stNumberInput label{font-size:18px!important;font-weight:800!important;color:#111!important}.st-key-btn_salvar_pedido_final button,.st-key-btn_buscar_cnpj_cliente button{background:#fb923c!important;color:#fff!important;border:0!important;width:100%!important}.st-key-btn_add_produto_pedido button{background:#fdba74!important;color:#111!important;border:0!important}div[class*="st-key-excluir_item_temp_"] button,div[class*="st-key-del_"] button{background:#ef4444!important;color:#fff!important;border:0!important;width:100%!important}div[class*="st-key-edit_"] button{background:#2563eb!important;color:#fff!important;border:0!important;width:100%!important}div[class*="st-key-a"] button{background:#f59e0b!important;color:#111!important;border:0!important;width:100%!important}[data-testid="stExpander"]{background:#fff!important;border:1px solid #eee!important;border-radius:18px!important;overflow:hidden!important;box-shadow:0 4px 18px rgba(0,0,0,.03)!important;margin-bottom:10px!important}[data-testid="stExpander"] details summary{background:#fff!important;color:#111!important;min-height:52px!important;padding:12px 14px!important;font-size:16px!important;font-weight:800!important}.st-key-bottom_nav{position:fixed!important;left:0!important;right:0!important;bottom:0!important;z-index:999999!important;background:#111!important;height:70px!important;padding:4px 2px calc(4px + env(safe-area-inset-bottom)) 2px!important;border-top:1px solid #222!important;overflow:hidden!important}.st-key-bottom_nav [data-testid="stHorizontalBlock"]{width:100vw!important;max-width:100vw!important;height:60px!important;margin:0 auto!important;display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:1px!important;align-items:center!important}.st-key-bottom_nav [data-testid="column"]{width:100%!important;min-width:0!important;max-width:none!important;padding:0!important;flex:none!important}.st-key-bottom_nav .stButton>button{width:100%!important;min-width:0!important;height:56px!important;min-height:56px!important;border:0!important;border-radius:14px!important;background:#111!important;color:#eee!important;font-size:9px!important;font-weight:900!important;padding:1px 0!important;line-height:1.05!important;white-space:pre-line!important;overflow:hidden!important;text-align:center!important}.st-key-bottom_nav .stButton>button[kind="primary"]{background:#f97316!important;color:#111!important}.stDownloadButton>button{background:#fb923c!important;color:#111!important;border:0!important;width:100%!important;border-radius:18px!important;font-weight:900!important;min-height:56px!important}.stLinkButton>a{background:#25D366!important;color:#111!important;border:0!important;width:100%!important;border-radius:18px!important;font-weight:900!important;min-height:56px!important;display:flex!important;align-items:center!important;justify-content:center!important;text-decoration:none!important}.pdf-box{background:white;border-radius:24px;padding:12px;border:1px solid #eee;box-shadow:0 8px 24px rgba(0,0,0,.05)}
  </style>''',
         unsafe_allow_html=True,
     )
@@ -552,7 +560,7 @@ def new_order(db):
     else:
         s = next(x for x in sales if x["id"] == st.session_state.sales_id)
 
-    prazo_pagamento = st.text_input("Prazo de pagamento", key="pedido_prazo_pagamento", placeholder="Ex: BOLETO - 30 DD, À vista, 7 dias")
+    prazo_pagamento = st.text_input("Prazo de pagamento *", key="pedido_prazo_pagamento", placeholder="Obrigatório: Ex: BOLETO - 30 DD, À vista, 7 dias")
 
     st.markdown("### Produto")
     p = st.selectbox("Produto", [None] + products, format_func=lambda x: "Selecione o produto" if x is None else x["name"], key="pedido_produto_unico")
@@ -586,6 +594,8 @@ def new_order(db):
             st.error("Selecione um cliente.")
         elif not items:
             st.error("Adicione pelo menos 1 produto.")
+        elif not prazo_pagamento.strip():
+            st.error("Informe o prazo de pagamento antes de salvar o pedido.")
         else:
             total = sum(it["quantity"] * it["price"] for it in items)
             rate = float(db["commissionRate"])
