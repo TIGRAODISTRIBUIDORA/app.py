@@ -178,7 +178,7 @@ def home_page(db):
         unsafe_allow_html=True,
     )
     buttons = [
-        ("PEDIDOS", "pedidos_menu"),
+        ("PEDIDOS", "orders"),
         ("CLIENTES", "clientes_menu"),
         ("CONSULTAS", "consultas_menu"),
         ("CONFIGURAÇÕES", "config_menu"),
@@ -230,9 +230,8 @@ def filtered_orders(db):
 
 
 def pedidos_menu(db):
-    st.markdown('<div class="page-title">Pedidos</div>', unsafe_allow_html=True)
-    buttons = [("PEDIDOS\nENVIADOS", "orders"), ("NOVO\nPEDIDO", "new_order"), ("VOLTAR", "home")]
-    grid_buttons(buttons, "pedidos_menu")
+    # Mantido apenas por compatibilidade; agora o botão PEDIDOS abre direto a lista.
+    set_page("orders")
 
 
 def clientes_menu(db):
@@ -336,19 +335,64 @@ def gerar_pdf_pedido(db, pedido):
     return buffer.getvalue()
 
 
-def orders_page(db, only_status=None, title="Pedidos Enviados"):
+def status_envio_pedido(o):
+    status = str(o.get("status", "Pendente")).strip().lower()
+    if status == "pendente":
+        return "Não enviado"
+    return "Enviado"
+
+
+def orders_page(db, only_status=None, title="Pedidos"):
     st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
+
+    if only_status:
+        filtro = "Todos"
+    else:
+        filtro = st.selectbox("", ["Todos", "Não enviados", "Enviados"], key="filtro_envio_pedidos", label_visibility="collapsed")
+
     busca = st.text_input("Pesquisar pedido, cliente ou vendedor", key=f"busca_pedidos_{title}")
-    lista = sorted(filtered_orders(db), key=lambda x: x["orderNumber"], reverse=True)
+    lista = sorted(filtered_orders(db), key=lambda x: x.get("orderNumber", 0), reverse=True)
+
     if only_status:
         lista = [o for o in lista if o.get("status") == only_status]
+    else:
+        if filtro == "Não enviados":
+            lista = [o for o in lista if status_envio_pedido(o) == "Não enviado"]
+        elif filtro == "Enviados":
+            lista = [o for o in lista if status_envio_pedido(o) == "Enviado"]
+
+    if busca:
+        lista = [o for o in lista if busca.lower() in json.dumps(o, ensure_ascii=False).lower()]
+
+    if not lista:
+        st.info("Nenhum pedido encontrado.")
+
     for o in lista:
-        if busca and busca.lower() not in json.dumps(o, ensure_ascii=False).lower():
-            continue
-        with st.expander(f"#{o['orderNumber']} — {o['clientName']} — {money(o['total'])} — {o['status']}"):
-            st.write("Vendedor:", o["salespersonName"])
-            st.write("Data:", o["date"])
-            st.dataframe(pd.DataFrame(o["items"]), use_container_width=True, hide_index=True)
+        envio = status_envio_pedido(o)
+        cor = "#dcfce7" if envio == "Enviado" else "#fef3c7"
+        texto_cor = "#166534" if envio == "Enviado" else "#92400e"
+        data_txt = str(o.get("date", "")).replace("T", " ")[:16]
+        st.markdown(
+            f"""<div class="card">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                    <div>
+                        <b>Pedido #{o.get('orderNumber','')}</b><br>
+                        <span style="font-size:15px;">{o.get('clientName','')}</span><br>
+                        <span style="font-size:13px;color:#666;">{data_txt}</span>
+                    </div>
+                    <div style="text-align:right;">
+                        <b>{money(o.get('total',0))}</b><br>
+                        <span style="display:inline-block;margin-top:6px;background:{cor};color:{texto_cor};border-radius:999px;padding:4px 8px;font-size:12px;font-weight:700;">{envio}</span>
+                    </div>
+                </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        with st.expander(f"Abrir pedido #{o.get('orderNumber','')}"):
+            st.write("Vendedor:", o.get("salespersonName", ""))
+            st.write("Data:", o.get("date", ""))
+            st.write("Status:", o.get("status", ""))
+            st.dataframe(pd.DataFrame(o.get("items", [])), use_container_width=True, hide_index=True)
             st.write("Comissão:", money(o.get("commissionAmount", 0)))
             if st.button("GERAR PDF DO PEDIDO", key="gerar_pdf_" + o["id"]):
                 st.session_state["pdf_pedido_aberto"] = o["id"]
@@ -367,8 +411,11 @@ def orders_page(db, only_status=None, title="Pedidos Enviados"):
                     db["orders"] = [x for x in db["orders"] if x["id"] != o["id"]]
                     save_db(db)
                     st.rerun()
-    back_button("pedidos_menu" if title == "Pedidos Enviados" else "consultas_menu")
 
+    st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+    if st.button("NOVO PEDIDO", key="btn_novo_pedido_lista"):
+        set_page("new_order")
+    back_button("consultas_menu" if title != "Pedidos" else "home")
 
 def clients_page(db):
     st.markdown('<div class="page-title">Clientes</div>', unsafe_allow_html=True)
@@ -676,7 +723,7 @@ routes = {
     "consultas_menu": consultas_menu,
     "config_menu": config_menu,
     "new_order": new_order,
-    "orders": lambda d: orders_page(d, title="Pedidos Enviados"),
+    "orders": lambda d: orders_page(d, title="Pedidos"),
     "pedidos_faturados": lambda d: orders_page(d, only_status="Faturado", title="Pedidos Faturados"),
     "clients": clients_page,
     "products": products_page,
