@@ -37,17 +37,17 @@ INITIAL_PRODUCTS = [
     {"id": "prod-8", "name": "Whisky Johnnie Walker Red Label 1L", "sku": "JWL-008", "price": 99.90, "stock": 40, "category": "Destilados", "supplier": "Diageo", "commissionRate": 4},
 ]
 
-INITIAL_CLIENTS = [
-    {"id": "cli-1", "code": "001", "name": "nelson das galaxie", "document": "123.456.789-00", "email": "nelson@galaxie.com", "phone": "(11) 98888-7777", "city": "São Paulo", "state": "SP", "address": "", "district": "", "zip": ""},
-    {"id": "cli-2", "code": "002", "name": "Distribuidora Silva & Silva", "document": "98.765.432/0001-11", "email": "silva@distribuidora.com", "phone": "(11) 3245-8899", "city": "Campinas", "state": "SP", "address": "", "district": "", "zip": ""},
-    {"id": "cli-3", "code": "003", "name": "Mercadinho do Bairro Ltda", "document": "45.123.789/0001-44", "email": "contato@mercadinhobairro.com", "phone": "(21) 97777-6666", "city": "Rio de Janeiro", "state": "RJ", "address": "", "district": "", "zip": ""},
-    {"id": "cli-4", "code": "004", "name": "Adega Central", "document": "55.666.777/0001-88", "email": "adega.central@outlook.com", "phone": "(19) 99122-3344", "city": "Piracicaba", "state": "SP", "address": "", "district": "", "zip": ""},
-]
-
 INITIAL_SALES = [
     {"id": "sales-1", "name": "Vendedor", "email": "vendedor@tigrao.com", "active": True, "cpf": "111.111.111-11", "phone": "(11) 91111-1111", "address": "Rua Principal, 100", "password": "123", "passwordIsTemporary": True},
     {"id": "sales-2", "name": "Carlos Souza", "email": "carlos@tigrao.com", "active": True, "cpf": "222.222.222-22", "phone": "(11) 92222-2222", "address": "Avenida Brasil, 250", "password": "123", "passwordIsTemporary": False},
     {"id": "sales-3", "name": "Fernanda Lima", "email": "fernanda@tigrao.com", "active": True, "cpf": "333.333.333-33", "phone": "(11) 93333-3333", "address": "Praça das Flores, 15", "password": "123", "passwordIsTemporary": False},
+]
+
+INITIAL_CLIENTS = [
+    {"id": "cli-1", "code": "001", "name": "nelson das galaxie", "document": "123.456.789-00", "email": "nelson@galaxie.com", "phone": "(11) 98888-7777", "city": "São Paulo", "state": "SP", "address": "", "district": "", "zip": "", "salespersonId": "sales-1", "salespersonName": "Vendedor"},
+    {"id": "cli-2", "code": "002", "name": "Distribuidora Silva & Silva", "document": "98.765.432/0001-11", "email": "silva@distribuidora.com", "phone": "(11) 3245-8899", "city": "Campinas", "state": "SP", "address": "", "district": "", "zip": "", "salespersonId": "sales-2", "salespersonName": "Carlos Souza"},
+    {"id": "cli-3", "code": "003", "name": "Mercadinho do Bairro Ltda", "document": "45.123.789/0001-44", "email": "contato@mercadinhobairro.com", "phone": "(21) 97777-6666", "city": "Rio de Janeiro", "state": "RJ", "address": "", "district": "", "zip": "", "salespersonId": "sales-3", "salespersonName": "Fernanda Lima"},
+    {"id": "cli-4", "code": "004", "name": "Adega Central", "document": "55.666.777/0001-88", "email": "adega.central@outlook.com", "phone": "(19) 99122-3344", "city": "Piracicaba", "state": "SP", "address": "", "district": "", "zip": "", "salespersonId": "sales-1", "salespersonName": "Vendedor"},
 ]
 
 INITIAL_ORDERS = [
@@ -171,7 +171,7 @@ def codigo_cliente(c):
 
 
 def campos_cliente(c):
-    return [codigo_cliente(c), c.get("name", ""), c.get("document", "")]
+    return [codigo_cliente(c), c.get("name", ""), c.get("document", ""), c.get("salespersonName", "")]
 
 
 def campos_produto(p):
@@ -182,9 +182,56 @@ def cliente_por_id(db, client_id):
     return next((c for c in db.get("clients", []) if c.get("id") == client_id), {})
 
 
-def cliente_duplicado(db, documento):
+def vendedor_por_id(db, sales_id):
+    return next((s for s in db.get("salespeople", []) if s.get("id") == sales_id), None)
+
+
+def vendedor_padrao(db):
+    ativos = [s for s in db.get("salespeople", []) if s.get("active")]
+    if ativos:
+        return ativos[0]
+    return db.get("salespeople", [{}])[0] if db.get("salespeople") else {"id": "", "name": ""}
+
+
+def vendedor_atual(db):
+    return vendedor_por_id(db, st.session_state.get("sales_id", "")) or {"id": st.session_state.get("sales_id", ""), "name": st.session_state.get("user_name", "")}
+
+
+def garantir_clientes_com_vendedor(db):
+    """Migra clientes antigos sem vendedor. Usa o vendedor do primeiro pedido do cliente; se não houver, usa o primeiro vendedor ativo."""
+    mudou = False
+    padrao = vendedor_padrao(db)
+    for c in db.get("clients", []):
+        if c.get("salespersonId"):
+            vend = vendedor_por_id(db, c.get("salespersonId"))
+            if vend and c.get("salespersonName") != vend.get("name"):
+                c["salespersonName"] = vend.get("name", "")
+                mudou = True
+            continue
+
+        pedido = next((o for o in db.get("orders", []) if o.get("clientId") == c.get("id") and o.get("salespersonId")), None)
+        if pedido:
+            c["salespersonId"] = pedido.get("salespersonId", "")
+            c["salespersonName"] = pedido.get("salespersonName", "")
+        else:
+            c["salespersonId"] = padrao.get("id", "")
+            c["salespersonName"] = padrao.get("name", "")
+        mudou = True
+    if mudou:
+        save_db(db)
+
+
+def clientes_filtrados(db):
+    clientes = db.get("clients", [])
+    if st.session_state.get("role") == "vendedor":
+        sid = st.session_state.get("sales_id", "")
+        clientes = [c for c in clientes if c.get("salespersonId") == sid]
+    return clientes
+
+
+def cliente_duplicado(db, documento, ignorar_id=""):
     doc = so_numeros(documento)
-    return bool(doc and any(so_numeros(c.get("document", "")) == doc for c in db.get("clients", [])))
+    return bool(doc and any(c.get("id") != ignorar_id and so_numeros(c.get("document", "")) == doc for c in db.get("clients", [])))
 
 
 def produto_duplicado(db, nome, codigo=""):
@@ -326,15 +373,9 @@ def gerar_pdf_pedido(o, cli):
         nome = str(it.get("productName", "")).upper()[:32]
         if y < 275:
             break
-        draw_text(c, 44, y, str(int(qtd)), 7)
-        draw_text(c, 73, y, "UN", 7)
-        draw_text(c, 98, y, prod_code, 7)
-        draw_text(c, 128, y, nome, 7)
-        draw_text(c, 415, y, "A", 7)
-        draw_text(c, 450, y, money_pdf(preco), 7)
-        draw_text(c, 495, y, money_pdf(desc), 7)
-        draw_text(c, 538, y, money_pdf(pr_unit), 7)
-        draw_text(c, 573, y, money_pdf(total), 7)
+        draw_text(c, 44, y, str(int(qtd)), 7); draw_text(c, 73, y, "UN", 7); draw_text(c, 98, y, prod_code, 7)
+        draw_text(c, 128, y, nome, 7); draw_text(c, 415, y, "A", 7); draw_text(c, 450, y, money_pdf(preco), 7)
+        draw_text(c, 495, y, money_pdf(desc), 7); draw_text(c, 538, y, money_pdf(pr_unit), 7); draw_text(c, 573, y, money_pdf(total), 7)
         y -= 13
 
     y -= 2; line(c, left, y, right, y, 1.0); y -= 18
@@ -474,13 +515,14 @@ def filtered_orders(db):
 
 def dashboard(db):
     orders = filtered_orders(db)
+    clients = clientes_filtrados(db)
     total = sum(float(o.get("total", 0)) for o in orders)
     com = sum(float(o.get("commissionAmount", 0)) for o in orders)
     c1, c2 = st.columns(2)
     c1.markdown(f'<div class="metric">Vendas<br><b>{money(total)}</b></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="metric">Comissão<br><b>{money(com)}</b></div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Pedidos", len(orders)); c2.metric("Clientes", len(db["clients"])); c3.metric("Produtos", len(db["products"]))
+    c1.metric("Pedidos", len(orders)); c2.metric("Clientes", len(clients)); c3.metric("Produtos", len(db["products"]))
     st.subheader("Últimos pedidos")
     for o in sorted(orders, key=lambda x: x.get("orderNumber", 0), reverse=True)[:10]:
         st.markdown(f'<div class="card" style="{status_card_style(o.get("status", ""))}"><b>#{o.get("orderNumber", "")} — {o.get("clientName", "")}</b><br>{o.get("salespersonName", "")} • {o.get("status", "")}<br><h3>{money(o.get("total", 0))}</h3></div>', unsafe_allow_html=True)
@@ -488,15 +530,22 @@ def dashboard(db):
 
 def new_order(db):
     st.markdown("## ➕ Novo Pedido")
-    clients = db["clients"]; products = db["products"]; sales = db["salespeople"]
+    clients = clientes_filtrados(db)
+    products = db["products"]
+    sales = db["salespeople"]
     st.session_state.setdefault("pedido_itens_temp", [])
     st.session_state.setdefault("pedido_cliente_id", "")
 
+    if st.session_state.get("pedido_cliente_id") and not any(c.get("id") == st.session_state.get("pedido_cliente_id") for c in clients):
+        st.session_state.pedido_cliente_id = ""
+
     st.markdown("### Cliente")
+    if st.session_state.get("role") == "vendedor":
+        st.caption("Você só pode lançar pedido para clientes atribuídos a você.")
     busca_cliente = st.text_input("Buscar cliente", key="pedido_busca_cliente_digitavel", placeholder="Digite nome, código ou CNPJ")
     clientes_encontrados = [c for c in clients if busca_cliente and combina_inicio(campos_cliente(c), busca_cliente)][:8]
     if busca_cliente and not clientes_encontrados:
-        st.warning("Nenhum cliente encontrado.")
+        st.warning("Nenhum cliente encontrado na sua lista.")
     for c_item in clientes_encontrados:
         if st.button(f'{codigo_cliente(c_item)} — {c_item["name"]}', key="selecionar_cliente_" + c_item["id"]):
             aviso("Cliente selecionado")
@@ -504,14 +553,19 @@ def new_order(db):
             st.rerun()
     c = next((cli for cli in clients if cli.get("id") == st.session_state.get("pedido_cliente_id", "")), None)
     if c:
-        st.markdown(f'<div class="card"><b>Cliente selecionado</b><br>{codigo_cliente(c)} — {c["name"]}<br>{c.get("document", "")}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><b>Cliente selecionado</b><br>{codigo_cliente(c)} — {c["name"]}<br>{c.get("document", "")}<br><b>Vendedor:</b> {c.get("salespersonName", "")}</div>', unsafe_allow_html=True)
     else:
         st.info("Digite e selecione um cliente para continuar.")
 
     if st.session_state.role == "admin":
-        s = st.selectbox("Vendedor", [x for x in sales if x.get("active")], format_func=lambda x: x["name"], key="pedido_vendedor")
+        if c and c.get("salespersonId"):
+            vendedor_do_cliente = vendedor_por_id(db, c.get("salespersonId"))
+            s = vendedor_do_cliente or st.selectbox("Vendedor", [x for x in sales if x.get("active")], format_func=lambda x: x["name"], key="pedido_vendedor")
+            st.info(f"Pedido será atribuído ao vendedor do cliente: {s.get('name','')}")
+        else:
+            s = st.selectbox("Vendedor", [x for x in sales if x.get("active")], format_func=lambda x: x["name"], key="pedido_vendedor")
     else:
-        s = next(x for x in sales if x["id"] == st.session_state.sales_id)
+        s = vendedor_atual(db)
 
     prazo_pagamento = st.text_input("Prazo de pagamento *", key="pedido_prazo_pagamento", placeholder="Obrigatório: Ex: BOLETO - 30 DD, À vista, 7 dias")
 
@@ -545,11 +599,13 @@ def new_order(db):
     if col1.button("Salvar pedido", key="btn_salvar_pedido_final"):
         items = st.session_state.pedido_itens_temp
         if not c:
-            st.error("Selecione um cliente.")
+            st.error("Selecione um cliente da lista permitida.")
         elif not items:
             st.error("Adicione pelo menos 1 produto.")
         elif not prazo_pagamento.strip():
             st.error("Informe o prazo de pagamento antes de salvar o pedido.")
+        elif st.session_state.get("role") == "vendedor" and c.get("salespersonId") != st.session_state.get("sales_id"):
+            st.error("Este cliente não pertence ao seu cadastro.")
         else:
             total = sum(it["quantity"] * it["price"] for it in items)
             rate = float(db["commissionRate"])
@@ -644,8 +700,21 @@ def orders_page(db):
                         st.rerun()
 
 
+def seletor_vendedor_para_cliente(db, chave, valor_id=""):
+    ativos = [s for s in db.get("salespeople", []) if s.get("active")]
+    if not ativos:
+        return {"id": "", "name": ""}
+    idx = 0
+    for i, s in enumerate(ativos):
+        if s.get("id") == valor_id:
+            idx = i
+            break
+    return st.selectbox("Vendedor responsável", ativos, index=idx, format_func=lambda x: x.get("name", ""), key=chave)
+
+
 def clients_page(db):
     st.subheader("👥 Clientes")
+    clientes_visiveis = clientes_filtrados(db)
     with st.expander("Cadastrar cliente"):
         st.markdown("#### Buscar dados pelo CNPJ")
         cnpj_busca = st.text_input("CNPJ", key="cliente_cnpj_busca", placeholder="Digite o CNPJ para buscar automaticamente")
@@ -659,6 +728,12 @@ def clients_page(db):
                 aviso("Dados encontrados")
                 st.rerun()
         st.info(f'Código automático do próximo cliente: {proximo_codigo(db["clients"])}')
+        vendedor_escolhido = None
+        if st.session_state.get("role") == "admin":
+            vendedor_escolhido = seletor_vendedor_para_cliente(db, "cliente_vendedor_resp")
+        else:
+            vendedor_escolhido = vendedor_atual(db)
+            st.caption(f"Este cliente será cadastrado para: {vendedor_escolhido.get('name','')}")
         with st.form("cli"):
             n = st.text_input("Nome / Razão social", key="cliente_nome")
             doc = st.text_input("CNPJ/CPF", key="cliente_doc")
@@ -673,18 +748,21 @@ def clients_page(db):
                 if cliente_duplicado(db, doc):
                     st.error("Cliente já cadastrado com esse CNPJ/CPF.")
                 else:
-                    db["clients"].insert(0, {"id": uid("cli"), "code": proximo_codigo(db["clients"]), "name": n, "document": doc, "email": em, "phone": ph, "city": city, "state": uf, "address": address, "district": district, "zip": zip_code})
+                    db["clients"].insert(0, {"id": uid("cli"), "code": proximo_codigo(db["clients"]), "name": n, "document": doc, "email": em, "phone": ph, "city": city, "state": uf, "address": address, "district": district, "zip": zip_code, "salespersonId": vendedor_escolhido.get("id", ""), "salespersonName": vendedor_escolhido.get("name", "")})
                     save_db(db); aviso("Cliente salvo"); st.rerun()
 
-    busca = st.text_input("Pesquisar cliente", key="busca_clientes", placeholder="Nome, código ou CNPJ/CPF")
-    encontrados = [c for c in db["clients"] if combina_inicio(campos_cliente(c), busca)] if busca else db["clients"]
+    busca = st.text_input("Pesquisar cliente", key="busca_clientes", placeholder="Nome, código, vendedor ou CNPJ/CPF")
+    encontrados = [c for c in clientes_visiveis if combina_inicio(campos_cliente(c), busca)] if busca else clientes_visiveis
     if busca and not encontrados:
         st.warning("Nenhum cliente encontrado.")
+    if st.session_state.get("role") == "vendedor":
+        st.caption("Você está vendo somente os clientes atribuídos a você.")
     for c in encontrados:
         with st.expander(f'{codigo_cliente(c)} — {c["name"]}'):
             st.write("CNPJ/CPF:", c.get("document", ""))
             st.write("Telefone:", c.get("phone", ""))
             st.write("Cidade/Estado:", f'{c.get("city", "")}/{c.get("state", "")}')
+            st.write("Vendedor responsável:", c.get("salespersonName", ""))
             col1, col2 = st.columns(2)
             editar = col1.button("Editar", key="edit_cli_" + c["id"])
             excluir = col2.button("Excluir", key="del_cli_" + c["id"])
@@ -696,6 +774,10 @@ def clients_page(db):
                     save_db(db); aviso("Cliente excluído"); st.rerun()
             if editar or st.session_state.get("editando_cliente") == c["id"]:
                 st.session_state["editando_cliente"] = c["id"]
+                if st.session_state.get("role") == "admin":
+                    vendedor_edit = seletor_vendedor_para_cliente(db, "edit_cli_vendedor_" + c["id"], c.get("salespersonId", ""))
+                else:
+                    vendedor_edit = {"id": c.get("salespersonId", ""), "name": c.get("salespersonName", "")}
                 with st.form("form_edit_cliente_" + c["id"]):
                     novo_nome = st.text_input("Nome / Razão social", value=c.get("name", ""), key="edit_cli_nome_" + c["id"])
                     novo_doc = st.text_input("CNPJ/CPF", value=c.get("document", ""), key="edit_cli_doc_" + c["id"])
@@ -709,11 +791,16 @@ def clients_page(db):
                     salvar = st.form_submit_button("Salvar edição")
                     cancelar = st.form_submit_button("Cancelar")
                 if salvar:
-                    repetido = any(outro["id"] != c["id"] and so_numeros(outro.get("document", "")) == so_numeros(novo_doc) and so_numeros(novo_doc) for outro in db["clients"])
-                    if repetido:
+                    if cliente_duplicado(db, novo_doc, ignorar_id=c["id"]):
                         st.error("Já existe outro cliente com esse CNPJ/CPF.")
                     else:
-                        c.update({"name": novo_nome, "document": novo_doc, "email": novo_email, "phone": novo_tel, "city": nova_cidade, "state": novo_estado, "address": novo_endereco, "district": novo_bairro, "zip": novo_cep})
+                        c.update({"name": novo_nome, "document": novo_doc, "email": novo_email, "phone": novo_tel, "city": nova_cidade, "state": novo_estado, "address": novo_endereco, "district": novo_bairro, "zip": novo_cep, "salespersonId": vendedor_edit.get("id", ""), "salespersonName": vendedor_edit.get("name", "")})
+                        # Atualiza pedidos futuros/históricos do cliente para o novo responsável quando admin reatribui
+                        if st.session_state.get("role") == "admin":
+                            for o in db.get("orders", []):
+                                if o.get("clientId") == c.get("id"):
+                                    o["salespersonId"] = vendedor_edit.get("id", "")
+                                    o["salespersonName"] = vendedor_edit.get("name", "")
                         save_db(db); st.session_state.pop("editando_cliente", None); aviso("Cliente atualizado"); st.rerun()
                 if cancelar:
                     st.session_state.pop("editando_cliente", None); aviso("Edição cancelada"); st.rerun()
@@ -808,14 +895,15 @@ def more_page(db):
     for s in db["salespeople"]:
         with st.expander(f"{s['name']} — {s['email']} — {'Ativo' if s.get('active') else 'Inativo'}"):
             st.write("CPF:", s.get("cpf", "")); st.write("Telefone:", s.get("phone", "")); st.write("Senha:", "Provisória" if s.get("passwordIsTemporary") else "Definitiva")
+            st.write("Clientes atribuídos:", len([c for c in db.get("clients", []) if c.get("salespersonId") == s.get("id")]))
             col1, col2, col3 = st.columns(3)
             editar = col1.button("Editar", key="edit_vend_" + s["id"])
             if col2.button("Ativar/Inativar", key="a" + s["id"]):
                 s["active"] = not s.get("active"); save_db(db); aviso("Vendedor atualizado"); st.rerun()
             excluir = col3.button("Excluir", key="del_vend_" + s["id"])
             if excluir:
-                if any(o.get("salespersonId") == s.get("id") for o in db.get("orders", [])):
-                    st.error("Não é possível excluir: esse vendedor possui pedidos cadastrados.")
+                if any(o.get("salespersonId") == s.get("id") for o in db.get("orders", [])) or any(c.get("salespersonId") == s.get("id") for c in db.get("clients", [])):
+                    st.error("Não é possível excluir: esse vendedor possui pedidos ou clientes atribuídos.")
                 else:
                     db["salespeople"] = [x for x in db["salespeople"] if x["id"] != s["id"]]
                     save_db(db); aviso("Vendedor excluído"); st.rerun()
@@ -836,7 +924,15 @@ def more_page(db):
                     if repetido:
                         st.error("Já existe outro vendedor com esse e-mail.")
                     else:
+                        nome_antigo = s.get("name", "")
                         s.update({"name": novo_nome, "email": novo_email, "cpf": novo_cpf, "phone": novo_tel, "password": nova_senha, "passwordIsTemporary": senha_provisoria_edit, "active": ativo})
+                        if nome_antigo != novo_nome:
+                            for c in db.get("clients", []):
+                                if c.get("salespersonId") == s.get("id"):
+                                    c["salespersonName"] = novo_nome
+                            for o in db.get("orders", []):
+                                if o.get("salespersonId") == s.get("id"):
+                                    o["salespersonName"] = novo_nome
                         save_db(db); st.session_state.pop("editando_vendedor", None); aviso("Vendedor atualizado"); st.rerun()
                 if cancelar:
                     st.session_state.pop("editando_vendedor", None); aviso("Edição cancelada"); st.rerun()
@@ -881,6 +977,7 @@ def more_page(db):
 css()
 db = load_db()
 garantir_lixeira(db)
+garantir_clientes_com_vendedor(db)
 if "auth" not in st.session_state:
     st.session_state.auth = False
 if "tab" not in st.session_state:
