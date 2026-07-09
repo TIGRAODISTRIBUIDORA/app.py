@@ -99,7 +99,11 @@ def css():
         .stApp{background:#fff!important;color:#222!important;}
         *{font-family:Arial, Helvetica, sans-serif;}
         .android-bar{height:42px;background:#5f6368;color:white;margin:-12px -18px 22px;padding:12px 14px 0;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .home-head{text-align:center;margin-top:34px;margin-bottom:58px;color:#333;line-height:1.25;}
+        .brand-logo{text-align:center;margin:14px 0 10px;}
+        .brand-mark{display:inline-flex;align-items:center;justify-content:center;width:70px;height:70px;border-radius:50%;background:#050505;border:3px solid #d4a017;color:#d4a017;font-size:44px;margin-bottom:6px;}
+        .brand-title{font-size:34px;font-weight:900;letter-spacing:1px;color:#111;line-height:1;}
+        .brand-sub{font-size:18px;font-weight:900;color:#b7791f;letter-spacing:1.5px;margin-top:2px;}
+        .home-head{text-align:center;margin-top:20px;margin-bottom:42px;color:#333;line-height:1.25;}
         .home-head .user{font-size:24px;font-weight:500;}
         .home-head .company{font-size:24px;font-weight:500;}
         .home-head .date{font-size:23px;font-weight:500;}
@@ -122,7 +126,20 @@ def css():
 
 
 def android_bar():
-    st.markdown('<div class="android-bar">AdsDroid - DISTRIBUIDORA MODELO</div>', unsafe_allow_html=True)
+    st.markdown('<div class="android-bar">🐾 TIGRÃO DISTRIBUIDORA</div>', unsafe_allow_html=True)
+
+
+def logo_tigrao():
+    st.markdown(
+        '''
+        <div class="brand-logo">
+            <div class="brand-mark">🐾</div>
+            <div class="brand-title">TIGRÃO</div>
+            <div class="brand-sub">DISTRIBUIDORA</div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 
 
 def set_page(page):
@@ -158,11 +175,12 @@ def grid_buttons(buttons, prefix):
 
 
 def home_page(db):
+    logo_tigrao()
     st.markdown(
         f"""
         <div class="home-head">
             <div class="user">{st.session_state.get('user_name','VENDEDOR').upper()}</div>
-            <div class="company">DISTRIBUIDORA MODELO</div>
+            <div class="company">TIGRÃO DISTRIBUIDORA</div>
             <div class="date">{today_br()}</div>
         </div>
         """,
@@ -179,7 +197,7 @@ def home_page(db):
     ]
     grid_buttons(buttons, "home")
     st.markdown(
-        '<div class="footer-info">Tecfisa Tecnologia<br>Fone: (67) 4042-1210<br>www.tecfisa.com.br<br>0.79 v.0.422 - 18/06/2026</div><div class="bottom-select">DISTRIBUIDORA MODELO ▾</div>',
+        '<div class="footer-info">TIGRÃO DISTRIBUIDORA<br>Comércio e Indústria de Produtos Naturais<br>Rio de Janeiro - RJ<br>Versão 1.0.0 - 09/07/2026</div><div class="bottom-select">TIGRÃO DISTRIBUIDORA ▾</div>',
         unsafe_allow_html=True,
     )
 
