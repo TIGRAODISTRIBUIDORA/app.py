@@ -343,78 +343,183 @@ def status_envio_pedido(o):
 
 
 def orders_page(db, only_status=None, title="Pedidos"):
-    st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        .orders-title {
+            text-align: center;
+            font-size: 38px;
+            font-weight: 400;
+            margin: 4px 0 8px;
+            color: #222;
+        }
+        .orders-filter div[data-baseweb="select"] > div {
+            background: #e5e7eb !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            min-height: 54px !important;
+            font-size: 18px !important;
+        }
+        .pedido-linha {
+            position: relative;
+            min-height: 150px;
+            padding: 28px 145px 22px 22px;
+            border-bottom: 1px solid #d4d4d4;
+            background: #fff;
+            color: #222;
+        }
+        .pedido-cliente,
+        .pedido-valor,
+        .pedido-data {
+            font-size: 17px;
+            line-height: 1.7;
+        }
+        .pedido-numero {
+            position: absolute;
+            top: 26px;
+            right: 18px;
+            font-size: 17px;
+        }
+        .pedido-status {
+            position: absolute;
+            top: 68px;
+            right: 18px;
+            min-width: 105px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .pedido-status-pendente {
+            background: #ffb800;
+            color: #111;
+        }
+        .pedido-status-enviado {
+            background: #41b94e;
+            color: #fff;
+        }
+        .novo-pedido-area {
+            background: #e5e7eb;
+            padding: 14px 20px;
+            margin-top: 0;
+        }
+        .st-key-btn_novo_pedido_lista button {
+            display: block !important;
+            width: 44% !important;
+            margin: auto !important;
+            min-height: 58px !important;
+            border-radius: 14px !important;
+            background: #c9c9c9 !important;
+            color: #111 !important;
+            font-size: 18px !important;
+            border: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(f'<div class="orders-title">{title}</div>', unsafe_allow_html=True)
 
     if only_status:
         filtro = "Todos"
     else:
-        filtro = st.selectbox("", ["Todos", "Não enviados", "Enviados"], key="filtro_envio_pedidos", label_visibility="collapsed")
+        st.markdown('<div class="orders-filter">', unsafe_allow_html=True)
+        filtro = st.selectbox(
+            "Filtro",
+            ["Todos", "Enviados", "Não Enviado"],
+            index=2,
+            key="filtro_envio_pedidos",
+            label_visibility="collapsed",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    busca = st.text_input("Pesquisar pedido, cliente ou vendedor", key=f"busca_pedidos_{title}")
-    lista = sorted(filtered_orders(db), key=lambda x: x.get("orderNumber", 0), reverse=True)
+    lista = sorted(
+        filtered_orders(db),
+        key=lambda x: int(x.get("orderNumber", 0)),
+        reverse=True,
+    )
 
     if only_status:
         lista = [o for o in lista if o.get("status") == only_status]
-    else:
-        if filtro == "Não enviados":
-            lista = [o for o in lista if status_envio_pedido(o) == "Não enviado"]
-        elif filtro == "Enviados":
-            lista = [o for o in lista if status_envio_pedido(o) == "Enviado"]
-
-    if busca:
-        lista = [o for o in lista if busca.lower() in json.dumps(o, ensure_ascii=False).lower()]
+    elif filtro == "Não Enviado":
+        lista = [o for o in lista if str(o.get("status", "")).strip().lower() == "pendente"]
+    elif filtro == "Enviados":
+        lista = [o for o in lista if str(o.get("status", "")).strip().lower() != "pendente"]
 
     if not lista:
         st.info("Nenhum pedido encontrado.")
 
     for o in lista:
-        envio = status_envio_pedido(o)
-        cor = "#dcfce7" if envio == "Enviado" else "#fef3c7"
-        texto_cor = "#166534" if envio == "Enviado" else "#92400e"
-        data_txt = str(o.get("date", "")).replace("T", " ")[:16]
+        status_original = str(o.get("status", "Pendente")).strip()
+        nao_enviado = status_original.lower() == "pendente"
+        status_texto = "Pendente" if nao_enviado else "Enviado"
+        status_classe = "pedido-status-pendente" if nao_enviado else "pedido-status-enviado"
+
+        try:
+            data_pedido = datetime.fromisoformat(str(o.get("date", ""))).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            data_pedido = str(o.get("date", "")).replace("T", " ")[:16]
+
         st.markdown(
-            f"""<div class="card">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-                    <div>
-                        <b>Pedido #{o.get('orderNumber','')}</b><br>
-                        <span style="font-size:15px;">{o.get('clientName','')}</span><br>
-                        <span style="font-size:13px;color:#666;">{data_txt}</span>
-                    </div>
-                    <div style="text-align:right;">
-                        <b>{money(o.get('total',0))}</b><br>
-                        <span style="display:inline-block;margin-top:6px;background:{cor};color:{texto_cor};border-radius:999px;padding:4px 8px;font-size:12px;font-weight:700;">{envio}</span>
-                    </div>
-                </div>
-            </div>""",
+            f"""
+            <div class="pedido-linha">
+                <div class="pedido-cliente">Cliente:&nbsp; {o.get("clientName", "").upper()}</div>
+                <div class="pedido-valor">Valor:&nbsp; {money(o.get("total", 0))}</div>
+                <div class="pedido-data">Data:&nbsp; {data_pedido}</div>
+                <div class="pedido-numero">Pedido:&nbsp; {o.get("orderNumber", "")}</div>
+                <div class="pedido-status {status_classe}">{status_texto}</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        with st.expander(f"Abrir pedido #{o.get('orderNumber','')}"):
+
+        with st.expander(f"ABRIR PEDIDO {o.get('orderNumber', '')}", expanded=False):
+            st.write("Cliente:", o.get("clientName", ""))
             st.write("Vendedor:", o.get("salespersonName", ""))
-            st.write("Data:", o.get("date", ""))
-            st.write("Status:", o.get("status", ""))
+            st.write("Data:", data_pedido)
+            st.write("Status:", status_original)
+            st.write("Valor:", money(o.get("total", 0)))
             st.dataframe(pd.DataFrame(o.get("items", [])), use_container_width=True, hide_index=True)
             st.write("Comissão:", money(o.get("commissionAmount", 0)))
+
             if st.button("GERAR PDF DO PEDIDO", key="gerar_pdf_" + o["id"]):
                 st.session_state["pdf_pedido_aberto"] = o["id"]
                 st.rerun()
+
             if st.session_state.get("pdf_pedido_aberto") == o["id"]:
                 pdf = gerar_pdf_pedido(db, o)
-                st.download_button("📄 Baixar/compartilhar PDF do pedido", data=pdf, file_name=f"pedido_{o['orderNumber']}_tigrao.pdf", mime="application/pdf", key="pdf_" + o["id"])
+                st.download_button(
+                    "BAIXAR / COMPARTILHAR PDF",
+                    data=pdf,
+                    file_name=f"pedido_{o['orderNumber']}_tigrao.pdf",
+                    mime="application/pdf",
+                    key="pdf_" + o["id"],
+                )
+
             if st.session_state.get("role") == "admin":
-                ns = st.selectbox("Status", STATUS, index=STATUS.index(o["status"]) if o.get("status") in STATUS else 0, key="st" + o["id"])
+                ns = st.selectbox(
+                    "Status",
+                    STATUS,
+                    index=STATUS.index(status_original) if status_original in STATUS else 0,
+                    key="st" + o["id"],
+                )
                 col1, col2 = st.columns(2)
-                if col1.button("Atualizar", key="up" + o["id"]):
+                if col1.button("ATUALIZAR", key="up" + o["id"]):
                     o["status"] = ns
                     save_db(db)
                     st.rerun()
-                if col2.button("Excluir pedido", key="del" + o["id"]):
+                if col2.button("EXCLUIR PEDIDO", key="del" + o["id"]):
                     db["orders"] = [x for x in db["orders"] if x["id"] != o["id"]]
                     save_db(db)
                     st.rerun()
 
-    st.markdown('<div style="height:18px"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="novo-pedido-area">', unsafe_allow_html=True)
     if st.button("NOVO PEDIDO", key="btn_novo_pedido_lista"):
         set_page("new_order")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     back_button("consultas_menu" if title != "Pedidos" else "home")
 
 def clients_page(db):
