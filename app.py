@@ -58,16 +58,24 @@ def seed():
     return {"app": "Tigrão Distribuidora", "systemName": "TIGRÃO", "commissionRate": 7, "products": INITIAL_PRODUCTS, "clients": INITIAL_CLIENTS, "salespeople": INITIAL_SALES, "orders": INITIAL_ORDERS}
 
 
+@st.cache_data(show_spinner=False)
+def load_db_cached(file_mtime: float):
+    if not os.path.exists(DB_FILE):
+        return seed()
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def load_db():
     if not os.path.exists(DB_FILE):
         save_db(seed())
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return load_db_cached(os.path.getmtime(DB_FILE))
 
 
 def save_db(db):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
+    load_db_cached.clear()
 
 
 def money(v):
@@ -98,12 +106,9 @@ def css():
         .block-container{max-width:520px!important;padding:12px 18px 18px!important;}
         .stApp{background:#fff!important;color:#222!important;}
         *{font-family:Arial, Helvetica, sans-serif;}
-        .android-bar{height:42px;background:#5f6368;color:white;margin:-12px -18px 22px;padding:12px 14px 0;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .brand-logo{text-align:center;margin:14px 0 10px;}
-        .brand-mark{display:inline-flex;align-items:center;justify-content:center;width:70px;height:70px;border-radius:50%;background:#050505;border:3px solid #d4a017;color:#d4a017;font-size:44px;margin-bottom:6px;}
-        .brand-title{font-size:34px;font-weight:900;letter-spacing:1px;color:#111;line-height:1;}
-        .brand-sub{font-size:18px;font-weight:900;color:#b7791f;letter-spacing:1.5px;margin-top:2px;}
-        .home-head{text-align:center;margin-top:20px;margin-bottom:42px;color:#333;line-height:1.25;}
+        .android-bar{height:42px;background:#5f6368;color:white;margin:-12px -18px 22px;padding:10px 14px 0;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;}
+        .android-logo{background:#f97316;color:white;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:18px;}
+        .home-head{text-align:center;margin-top:34px;margin-bottom:58px;color:#333;line-height:1.25;}
         .home-head .user{font-size:24px;font-weight:500;}
         .home-head .company{font-size:24px;font-weight:500;}
         .home-head .date{font-size:23px;font-weight:500;}
@@ -126,20 +131,7 @@ def css():
 
 
 def android_bar():
-    st.markdown('<div class="android-bar">🐾 TIGRÃO DISTRIBUIDORA</div>', unsafe_allow_html=True)
-
-
-def logo_tigrao():
-    st.markdown(
-        '''
-        <div class="brand-logo">
-            <div class="brand-mark">🐾</div>
-            <div class="brand-title">TIGRÃO</div>
-            <div class="brand-sub">DISTRIBUIDORA</div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="android-bar"><span class="android-logo">🐾</span><span>TIGRÃO DISTRIBUIDORA</span></div>', unsafe_allow_html=True)
 
 
 def set_page(page):
@@ -175,7 +167,6 @@ def grid_buttons(buttons, prefix):
 
 
 def home_page(db):
-    logo_tigrao()
     st.markdown(
         f"""
         <div class="home-head">
@@ -197,7 +188,7 @@ def home_page(db):
     ]
     grid_buttons(buttons, "home")
     st.markdown(
-        '<div class="footer-info">TIGRÃO DISTRIBUIDORA<br>Comércio e Indústria de Produtos Naturais<br>Rio de Janeiro - RJ<br>Versão 1.0.0 - 09/07/2026</div><div class="bottom-select">TIGRÃO DISTRIBUIDORA ▾</div>',
+        '<div class="footer-info">TIGRÃO DISTRIBUIDORA<br>Comércio e Indústria de Produtos Naturais<br>Rio de Janeiro - RJ<br>Versão 1.0.1</div><div class="bottom-select">TIGRÃO DISTRIBUIDORA ▾</div>',
         unsafe_allow_html=True,
     )
 
@@ -359,8 +350,12 @@ def orders_page(db, only_status=None, title="Pedidos Enviados"):
             st.write("Data:", o["date"])
             st.dataframe(pd.DataFrame(o["items"]), use_container_width=True, hide_index=True)
             st.write("Comissão:", money(o.get("commissionAmount", 0)))
-            pdf = gerar_pdf_pedido(db, o)
-            st.download_button("📄 Baixar/compartilhar PDF do pedido", data=pdf, file_name=f"pedido_{o['orderNumber']}_tigrao.pdf", mime="application/pdf", key="pdf_" + o["id"])
+            if st.button("GERAR PDF DO PEDIDO", key="gerar_pdf_" + o["id"]):
+                st.session_state["pdf_pedido_aberto"] = o["id"]
+                st.rerun()
+            if st.session_state.get("pdf_pedido_aberto") == o["id"]:
+                pdf = gerar_pdf_pedido(db, o)
+                st.download_button("📄 Baixar/compartilhar PDF do pedido", data=pdf, file_name=f"pedido_{o['orderNumber']}_tigrao.pdf", mime="application/pdf", key="pdf_" + o["id"])
             if st.session_state.get("role") == "admin":
                 ns = st.selectbox("Status", STATUS, index=STATUS.index(o["status"]) if o.get("status") in STATUS else 0, key="st" + o["id"])
                 col1, col2 = st.columns(2)
@@ -413,8 +408,10 @@ def products_page(db):
                     save_db(db)
                     st.rerun()
     busca = st.text_input("Pesquisar produto por código, nome ou categoria", key="busca_produtos")
+    busca_norm = normalizar(busca)
     for p in db["products"]:
-        if busca and busca.lower() not in json.dumps(p, ensure_ascii=False).lower():
+        texto = normalizar(json.dumps(p, ensure_ascii=False))
+        if busca_norm and busca_norm not in texto:
             continue
         st.markdown(f'<div class="card"><b>{p["sku"]} — {p["name"]}</b><br>{p["category"]}<br><h3>{money(p["price"])}</h3>Estoque: {p["stock"]} • Comissão: {p.get("commissionRate", db["commissionRate"])}%</div>', unsafe_allow_html=True)
     back_button("consultas_menu")
@@ -519,6 +516,7 @@ def importar_clientes_excel(db, arquivo):
     return adicionados, atualizados
 
 
+@st.cache_data(show_spinner=False)
 def modelo_excel_download():
     modelo = BytesIO()
     with pd.ExcelWriter(modelo, engine="openpyxl") as writer:
@@ -558,11 +556,14 @@ def import_clientes_page(db):
 def backup_page(db):
     st.markdown('<div class="page-title">Backup</div>', unsafe_allow_html=True)
     st.download_button("BAIXAR BACKUP JSON", data=json.dumps(db, ensure_ascii=False, indent=2).encode("utf-8"), file_name="tigrao_backup.json", key="download_backup_json")
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        for k, v in {"produtos": pd.DataFrame(db["products"]), "clientes": pd.DataFrame(db["clients"]), "vendedores": pd.DataFrame(db["salespeople"]), "pedidos": pd.DataFrame(db["orders"])}.items():
-            v.to_excel(writer, index=False, sheet_name=k)
-    st.download_button("EXPORTAR EXCEL", data=out.getvalue(), file_name="tigrao_export.xlsx", key="download_excel")
+    if st.button("GERAR EXCEL PARA EXPORTAÇÃO", key="btn_gerar_excel_exportacao"):
+        out = BytesIO()
+        with pd.ExcelWriter(out, engine="openpyxl") as writer:
+            for k, v in {"produtos": pd.DataFrame(db["products"]), "clientes": pd.DataFrame(db["clients"]), "vendedores": pd.DataFrame(db["salespeople"]), "pedidos": pd.DataFrame(db["orders"])}.items():
+                v.to_excel(writer, index=False, sheet_name=k)
+        st.session_state["excel_exportacao"] = out.getvalue()
+    if st.session_state.get("excel_exportacao"):
+        st.download_button("EXPORTAR EXCEL", data=st.session_state["excel_exportacao"], file_name="tigrao_export.xlsx", key="download_excel")
     up = st.file_uploader("Importar backup JSON", type=["json"], key="upload_backup_json")
     if up and st.button("IMPORTAR AGORA", key="btn_importar_backup"):
         new = json.loads(up.read().decode("utf-8"))
